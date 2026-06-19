@@ -1,0 +1,50 @@
+<Window x:Class="VpnSc.Windows.ServerSelectionWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+        Title="Server Selection"
+        Width="360" Height="520"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="{StaticResource VpnPageBackgroundBrush}">
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolVis"/>
+    </Window.Resources>
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <Border Style="{StaticResource VpnWpfUiToolbar}">
+            <TextBlock x:Name="TxtTitle" FontSize="15" FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+        </Border>
+        <ScrollViewer Grid.Row="1" Padding="12,8" VerticalScrollBarVisibility="Auto">
+            <ListBox x:Name="ServerList" BorderThickness="0" Background="Transparent"
+                     SelectionChanged="ServerList_OnSelectionChanged">
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <ui:Card Margin="0,0,0,6" Padding="10">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Image Source="{Binding FlagImage}" Width="28" Height="20" Stretch="Uniform" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="1" Text="{Binding DisplayName}" Margin="12,0,0,0"
+                                           FontSize="14" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                <Border Background="#FFEFF6FF" CornerRadius="6" Padding="6,3"
+                                        Visibility="{Binding ShowRecommended, Converter={StaticResource BoolVis}}">
+                                    <TextBlock Text="{Binding RecommendedText}" FontSize="10" FontWeight="Medium"
+                                               Foreground="{StaticResource VpnConnectBrush}"/>
+                                </Border>
+                            </Grid>
+                        </ui:Card>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </ScrollViewer>
+    </Grid>
+</Window>

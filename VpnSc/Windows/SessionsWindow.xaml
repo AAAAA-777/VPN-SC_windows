@@ -1,0 +1,26 @@
+﻿<Window x:Class="VpnSc.Windows.SessionsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+        Title="Sessions"
+        Width="420" Height="480"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource VpnPageBackgroundBrush}">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <TextBlock x:Name="TxtTitle" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,12"
+                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+        <ui:Card Grid.Row="1" Padding="4">
+            <ListBox x:Name="SessionsList" DisplayMemberPath="Display" BorderThickness="0"
+                     Style="{StaticResource VpnSessionListBox}"/>
+        </ui:Card>
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+            <ui:Button x:Name="BtnTerminate" Appearance="Danger" Click="BtnTerminate_OnClick"/>
+            <ui:Button x:Name="BtnClose" Appearance="Secondary" Margin="8,0,0,0" Click="BtnClose_OnClick"/>
+        </StackPanel>
+    </Grid>
+</Window>

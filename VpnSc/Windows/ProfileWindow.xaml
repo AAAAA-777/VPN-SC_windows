@@ -1,0 +1,27 @@
+<Window x:Class="VpnSc.Windows.ProfileWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+        Title="Profile"
+        Width="380" Height="420"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="{StaticResource VpnPageBackgroundBrush}">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="16">
+        <StackPanel>
+            <TextBlock x:Name="TxtTitle" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,12"
+                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+            <ui:Card Padding="16" Margin="0,0,0,12">
+                <StackPanel>
+                    <TextBlock x:Name="TxtEmailLabel" Style="{StaticResource VpnBodyText}" FontWeight="SemiBold"/>
+                    <TextBlock x:Name="TxtEmail" FontSize="15" FontWeight="SemiBold" Margin="0,4,0,12"
+                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                    <TextBlock x:Name="TxtVerifiedLabel" Style="{StaticResource VpnBodyText}"/>
+                    <TextBlock x:Name="TxtSubscription" Style="{StaticResource VpnBodyText}" Margin="0,12,0,0"/>
+                </StackPanel>
+            </ui:Card>
+            <ui:Button x:Name="BtnDevices" Appearance="Primary" HorizontalAlignment="Stretch"
+                       Click="BtnDevices_OnClick"/>
+        </StackPanel>
+    </ScrollViewer>
+</Window>

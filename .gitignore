@@ -1,0 +1,9 @@
+﻿[Bb]in/
+[Oo]bj/
+packages/
+.vs/
+*.user
+connect/
+.cursor/
+agent-tools/
+*.wpftmp.csproj
