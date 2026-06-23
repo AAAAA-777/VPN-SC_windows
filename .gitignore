@@ -10,3 +10,4 @@ agent-tools/
 dist/
 native/x64/*.exe
 native/x64/*.dll
+VpnSc/
