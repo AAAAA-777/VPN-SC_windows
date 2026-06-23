@@ -89,7 +89,7 @@
                                    TextWrapping="Wrap" Margin="0,0,0,16"/>
                         <TextBlock Text="{Binding EmailLabelText}" FontSize="13" FontWeight="Medium"
                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,6"/>
-                        <ui:TextBox Text="{Binding Email, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="e-mail@example.com"/>
+                        <ui:TextBox Text="{Binding Email, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="mail@example.com"/>
                         <Border Style="{StaticResource VpnInlineErrorBanner}"
                                 Visibility="{Binding AuthErrorText, Converter={StaticResource StringVis}}">
                             <StackPanel Orientation="Horizontal">
@@ -407,8 +407,9 @@
                                 <ui:Card Margin="0,0,0,6" Padding="0">
                                     <Button Background="Transparent" BorderThickness="0" Cursor="Arrow"
                                             Command="{Binding DataContext.SelectServerCommand, ElementName=RootGrid}"
-                                            CommandParameter="{Binding}" HorizontalContentAlignment="Stretch" Padding="10,8">
-                                        <Grid>
+                                            CommandParameter="{Binding}" HorizontalAlignment="Stretch"
+                                            HorizontalContentAlignment="Stretch" Padding="10,8">
+                                        <Grid HorizontalAlignment="Stretch">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="Auto"/>
                                                 <ColumnDefinition Width="Auto"/>
@@ -451,7 +452,7 @@
                                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
                                             </StackPanel>
                                             <Border Grid.Column="3" Background="#FFEFF6FF" CornerRadius="6" Padding="6,3"
-                                                    VerticalAlignment="Center"
+                                                    HorizontalAlignment="Right" VerticalAlignment="Center"
                                                     Visibility="{Binding ShowRecommended, Converter={StaticResource BoolVis}}">
                                                 <TextBlock Text="{Binding RecommendedText}" FontSize="10" FontWeight="Medium"
                                                            Foreground="{StaticResource VpnConnectBrush}"/>
@@ -609,21 +610,80 @@
                 </Border>
                 <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="16,10">
                     <StackPanel>
-                        <ui:Card Padding="20" Margin="0,0,0,12">
-                            <StackPanel HorizontalAlignment="Center">
-                                <Border Width="64" Height="64" CornerRadius="32" HorizontalAlignment="Center"
-                                        Background="{StaticResource VpnConnectBrush}" Margin="0,0,0,12">
-                                    <ui:SymbolIcon Symbol="Person24" FontSize="28" Foreground="White"
+                        <ui:Card Margin="0,0,0,8" Padding="14">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Border Style="{StaticResource VpnIconBadge}">
+                                    <ui:SymbolIcon Symbol="Person24" FontSize="18"
+                                                   Foreground="{StaticResource VpnConnectBrush}"
                                                    HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                 </Border>
-                                <TextBlock Text="{Binding ProfileEmail}" FontSize="16" FontWeight="SemiBold"
-                                           Foreground="{DynamicResource TextFillColorPrimaryBrush}" HorizontalAlignment="Center"/>
-                                <TextBlock Text="{Binding ProfileSubscriptionText}" Style="{StaticResource VpnBodyText}"
-                                           HorizontalAlignment="Center" Margin="0,10,0,0" TextAlignment="Center" TextWrapping="Wrap"/>
-                            </StackPanel>
+                                <StackPanel Grid.Column="1" Margin="12,0,10,0" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding ProfileEmail}" Style="{StaticResource VpnSettingsRowTitle}" Margin="0,0,0,6"/>
+                                    <TextBlock Text="{Binding ProfileSubscriptionText}" Style="{StaticResource VpnBodyText}" Margin="0"/>
+                                </StackPanel>
+                                <Border Grid.Column="2" CornerRadius="6" Padding="8,4" VerticalAlignment="Top">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Background" Value="#14C42B1C"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding ProfileSubscriptionActive}" Value="True">
+                                                    <Setter Property="Background" Value="#14107C10"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <TextBlock Text="{Binding ProfileSubscriptionBadgeText}" FontSize="11" FontWeight="SemiBold">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Foreground" Value="{StaticResource VpnDangerBrush}"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding ProfileSubscriptionActive}" Value="True">
+                                                        <Setter Property="Foreground" Value="{StaticResource VpnSuccessBrush}"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </Border>
+                            </Grid>
                         </ui:Card>
-                        <ui:Button Appearance="Primary" Content="{Binding DeviceManagementText}"
-                                   Command="{Binding OpenSessionsCommand}" HorizontalAlignment="Stretch"/>
+
+                        <ui:Card Margin="0,0,0,8" Padding="0">
+                            <Button Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                    Command="{Binding OpenSessionsCommand}"
+                                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="14,12">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Border Style="{StaticResource VpnIconBadge}">
+                                        <ui:SymbolIcon Symbol="PhoneDesktop24" FontSize="18"
+                                                       Foreground="{StaticResource VpnConnectBrush}"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <StackPanel Grid.Column="1" Margin="12,0,10,0" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding DeviceManagementText}" Style="{StaticResource VpnSettingsRowTitle}"/>
+                                        <TextBlock Text="{Binding DeviceManagementSubText}" Style="{StaticResource VpnSettingsRowSub}"/>
+                                    </StackPanel>
+                                    <ui:SymbolIcon Grid.Column="2" Symbol="ChevronRight24" FontSize="14"
+                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                   VerticalAlignment="Center"/>
+                                </Grid>
+                            </Button>
+                        </ui:Card>
+
+                        <TextBlock Text="{Binding ProfileIdText}" FontSize="12"
+                                   HorizontalAlignment="Center" TextAlignment="Center"
+                                   Margin="0,8,0,4" Opacity="0.5"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   Visibility="{Binding ProfileIdText, Converter={StaticResource StringVis}}"/>
                     </StackPanel>
                 </ScrollViewer>
             </Grid>
@@ -634,7 +694,6 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
-                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
                 <Border Grid.Row="0" Style="{StaticResource VpnWpfUiToolbar}">
                     <Grid Height="36">
@@ -646,13 +705,167 @@
                         <TextBlock Text="{Binding PageTitle}" Style="{StaticResource VpnPageTitle}"/>
                     </Grid>
                 </Border>
-                <ui:Card Grid.Row="1" Margin="16,10,16,0" Padding="4">
-                    <ListBox ItemsSource="{Binding SessionItems}" SelectedItem="{Binding SelectedSession}"
-                             Style="{StaticResource VpnSessionListBox}" DisplayMemberPath="Display"/>
-                </ui:Card>
-                <ui:Button Grid.Row="2" Margin="16,10,16,14" Appearance="Danger"
-                           Content="{Binding TerminateSessionText}" Command="{Binding TerminateSessionCommand}"
-                           HorizontalAlignment="Stretch"/>
+                <Grid Grid.Row="1" Margin="16,10,16,14">
+                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"
+                                Visibility="{Binding SessionsEmpty, Converter={StaticResource BoolVis}}">
+                        <Border Width="64" Height="64" CornerRadius="32" Background="#1A0078D4" Margin="0,0,0,12">
+                            <ui:SymbolIcon Symbol="PhoneDesktop24" FontSize="28"
+                                           Foreground="{StaticResource VpnConnectBrush}"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <TextBlock Text="{Binding SessionsEmptyTitle}" Style="{StaticResource VpnSettingsRowTitle}"
+                                   HorizontalAlignment="Center" TextAlignment="Center"/>
+                        <TextBlock Text="{Binding SessionsEmptyMessage}" Style="{StaticResource VpnBodyText}"
+                                   HorizontalAlignment="Center" TextAlignment="Center" Margin="0,6,0,0"/>
+                    </StackPanel>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <ScrollViewer.Style>
+                            <Style TargetType="ScrollViewer">
+                                <Setter Property="Visibility" Value="Visible"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding SessionsEmpty}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ScrollViewer.Style>
+                        <ItemsControl ItemsSource="{Binding SessionItems}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <ui:Card Style="{StaticResource VpnSessionDeviceCard}">
+                                        <StackPanel>
+                                            <Border Padding="14,12,14,10">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Border Style="{StaticResource VpnIconBadge}" Margin="0,0,12,0">
+                                                        <Grid>
+                                                            <ui:SymbolIcon Symbol="Phone24" FontSize="18"
+                                                                           Foreground="{StaticResource VpnConnectBrush}"
+                                                                           HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                                <ui:SymbolIcon.Style>
+                                                                    <Style TargetType="ui:SymbolIcon">
+                                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                                        <Style.Triggers>
+                                                                            <DataTrigger Binding="{Binding PlatformKey}" Value="android">
+                                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                                            </DataTrigger>
+                                                                            <DataTrigger Binding="{Binding PlatformKey}" Value="ios">
+                                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                                            </DataTrigger>
+                                                                        </Style.Triggers>
+                                                                    </Style>
+                                                                </ui:SymbolIcon.Style>
+                                                            </ui:SymbolIcon>
+                                                            <ui:SymbolIcon Symbol="Desktop24" FontSize="18"
+                                                                           Foreground="{StaticResource VpnConnectBrush}"
+                                                                           HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                                <ui:SymbolIcon.Style>
+                                                                    <Style TargetType="ui:SymbolIcon">
+                                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                                        <Style.Triggers>
+                                                                            <DataTrigger Binding="{Binding PlatformKey}" Value="app">
+                                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                                            </DataTrigger>
+                                                                        </Style.Triggers>
+                                                                    </Style>
+                                                                </ui:SymbolIcon.Style>
+                                                            </ui:SymbolIcon>
+                                                            <ui:SymbolIcon Symbol="DeviceEq24" FontSize="18"
+                                                                           Foreground="{StaticResource VpnConnectBrush}"
+                                                                           HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                                <ui:SymbolIcon.Style>
+                                                                    <Style TargetType="ui:SymbolIcon">
+                                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                                        <Style.Triggers>
+                                                                            <DataTrigger Binding="{Binding PlatformKey}" Value="android">
+                                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                                            </DataTrigger>
+                                                                            <DataTrigger Binding="{Binding PlatformKey}" Value="ios">
+                                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                                            </DataTrigger>
+                                                                            <DataTrigger Binding="{Binding PlatformKey}" Value="app">
+                                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                                            </DataTrigger>
+                                                                        </Style.Triggers>
+                                                                    </Style>
+                                                                </ui:SymbolIcon.Style>
+                                                            </ui:SymbolIcon>
+                                                        </Grid>
+                                                    </Border>
+                                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding DeviceName}" Style="{StaticResource VpnSettingsRowTitle}"/>
+                                                        <TextBlock Text="{Binding PlatformText}" Style="{StaticResource VpnSettingsRowSub}" Margin="0,2,0,0"/>
+                                                    </StackPanel>
+                                                    <Border Grid.Column="2" Background="#FFEFF6FF" CornerRadius="6" Padding="6,3"
+                                                            Margin="0,0,8,0" VerticalAlignment="Center"
+                                                            Visibility="{Binding IsCurrentDevice, Converter={StaticResource BoolVis}}">
+                                                        <TextBlock Text="{Binding CurrentDeviceText}" FontSize="10" FontWeight="SemiBold"
+                                                                   Foreground="{StaticResource VpnConnectBrush}"/>
+                                                    </Border>
+                                                    <Ellipse Grid.Column="3" Width="8" Height="8" Fill="{StaticResource VpnSuccessBrush}"
+                                                             VerticalAlignment="Center"
+                                                             Visibility="{Binding IsActive, Converter={StaticResource BoolVis}}"/>
+                                                </Grid>
+                                            </Border>
+
+                                            <Border Style="{StaticResource VpnSessionDetailsPanel}">
+                                                <StackPanel>
+                                                    <!-- IP-адрес скрыт из UI; данные по-прежнему в SessionItemViewModel.IpAddress
+                                                    <Grid Style="{StaticResource VpnSessionInfoRow}">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="110"/>
+                                                            <ColumnDefinition Width="*"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Text="{Binding IpLabel}" Style="{StaticResource VpnSettingsRowSub}" Margin="0"/>
+                                                        <TextBlock Grid.Column="1" Text="{Binding IpAddress}" Style="{StaticResource VpnBodyText}" Margin="0"/>
+                                                    </Grid>
+                                                    -->
+                                                    <Grid Style="{StaticResource VpnSessionInfoRow}">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="110"/>
+                                                            <ColumnDefinition Width="*"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Text="{Binding CreatedLabel}" Style="{StaticResource VpnSettingsRowSub}" Margin="0"/>
+                                                        <TextBlock Grid.Column="1" Text="{Binding CreatedText}" Style="{StaticResource VpnBodyText}" Margin="0"/>
+                                                    </Grid>
+                                                    <Grid Style="{StaticResource VpnSessionInfoRow}"
+                                                          Visibility="{Binding HasLastActivity, Converter={StaticResource BoolVis}}">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="110"/>
+                                                            <ColumnDefinition Width="*"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Text="{Binding LastActivityLabel}" Style="{StaticResource VpnSettingsRowSub}" Margin="0"/>
+                                                        <TextBlock Grid.Column="1" Text="{Binding LastActivityText}" Style="{StaticResource VpnBodyText}" Margin="0"/>
+                                                    </Grid>
+                                                </StackPanel>
+                                            </Border>
+
+                                            <ui:Button Appearance="Secondary"
+                                                       Content="{Binding TerminateButtonText}"
+                                                       Command="{Binding DataContext.TerminateSessionCommand, ElementName=RootGrid}"
+                                                       CommandParameter="{Binding}"
+                                                       Margin="12,10,12,12"
+                                                       HorizontalAlignment="Stretch"
+                                                       Visibility="{Binding CanTerminate, Converter={StaticResource BoolVis}}">
+                                                <ui:Button.Style>
+                                                    <Style TargetType="ui:Button" BasedOn="{StaticResource {x:Type ui:Button}}">
+                                                        <Setter Property="Foreground" Value="{StaticResource VpnDangerBrush}"/>
+                                                        <Setter Property="BorderBrush" Value="{StaticResource VpnDangerBrush}"/>
+                                                    </Style>
+                                                </ui:Button.Style>
+                                            </ui:Button>
+                                        </StackPanel>
+                                    </ui:Card>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Grid>
             </Grid>
 
         </Grid>

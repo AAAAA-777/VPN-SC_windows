@@ -29,14 +29,20 @@ public static class VpnTunnelProbe
 
     private static async Task<bool> ProbeUrlThroughSocksAsync(string url)
     {
+        return await ProbeUrlWithCurlAsync(url, useSocks: true);
+    }
+
+    private static async Task<bool> ProbeUrlWithCurlAsync(string url, bool useSocks)
+    {
         try
         {
             var curl = ResolveCurlExecutable();
+            var socks = useSocks ? "--socks5-hostname 127.0.0.1:1080 " : "";
             var psi = new ProcessStartInfo
             {
                 FileName = curl,
                 Arguments =
-                    $"--socks5-hostname 127.0.0.1:1080 --max-time {TestTimeout.TotalSeconds:0} -s -o NUL -w %{{http_code}} \"{url}\"",
+                    $"{socks}--max-time {TestTimeout.TotalSeconds:0} -s -o NUL -w %{{http_code}} \"{url}\"",
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardOutput = true,
@@ -65,7 +71,7 @@ public static class VpnTunnelProbe
             }
 
             var code = (await process.StandardOutput.ReadToEndAsync()).Trim();
-            return code == "204";
+            return int.TryParse(code, out var status) && status is 200 or 204 or 301 or 302 or 304;
         }
         catch
         {

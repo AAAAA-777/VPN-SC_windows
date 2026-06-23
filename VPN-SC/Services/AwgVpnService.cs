@@ -5,6 +5,10 @@ namespace VpnSc.Services;
 
 public static class AwgVpnService
 {
+    private const int InternetProbeAttempts = 8;
+    private static readonly TimeSpan TunnelWarmupDelay = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan InternetProbeDelay = TimeSpan.FromSeconds(2);
+
     public static async Task<(bool ok, List<WireguardServer> servers, string? error)> GetServersAsync(
         string accessToken)
     {
@@ -45,20 +49,20 @@ public static class AwgVpnService
             var confIni = await ConfigPayloadToIniAsync(payload);
             var connect = await AwgTunnelService.ConnectAsync(confIni);
             if (!connect.ok)
-                return connect;
+                return (false, LocalizeAwgError(connect.error));
 
-            if (!AwgTunnelService.IsConnected)
+            if (!IsTunnelUp())
             {
                 await Task.Delay(TimeSpan.FromSeconds(2));
-                if (!AwgTunnelService.IsConnected)
+                if (!IsTunnelUp())
                 {
                     await AwgTunnelService.DisconnectAsync();
                     AwgTunnelService.DeleteWrittenConfigIfExists();
-                    return (false, I18n.T("connection_error"));
+                    return (false, LocalizeAwgError(connect.error) ?? I18n.T("awg_tunnel_not_running"));
                 }
             }
 
-            if (!await VpnTunnelProbe.TestInternetAsync())
+            if (!await WaitForInternetAsync())
             {
                 await AwgTunnelService.DisconnectAsync();
                 AwgTunnelService.DeleteWrittenConfigIfExists();
@@ -72,11 +76,11 @@ public static class AwgVpnService
         {
             return (false, ex.Message);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
             await AwgTunnelService.DisconnectAsync();
             AwgTunnelService.DeleteWrittenConfigIfExists();
-            return (false, I18n.T("connection_error"));
+            return (false, LocalizeAwgError(ex.Message) ?? ex.Message);
         }
     }
 
@@ -84,11 +88,8 @@ public static class AwgVpnService
         await AwgTunnelService.DisconnectAsync();
 
     public static (bool ok, bool connected) GetVpnStatus() =>
-        (true, AwgTunnelService.IsConnected);
+        (true, IsTunnelUp());
 
-    /// <summary>
-    /// Converts API payload (vpn:// URI, raw INI, or base64 vpn payload) to WireGuard INI — same as Flutter AwgVpnService.
-    /// </summary>
     public static async Task<string> ConfigPayloadToIniAsync(string payload)
     {
         var trimmed = payload.Trim();
@@ -100,5 +101,39 @@ public static class AwgVpnService
             : "vpn://" + trimmed;
         var imported = await AwgConfigService.ImportVpnUriAsync(vpnUri);
         return imported.ConfIni;
+    }
+
+    private static bool IsTunnelUp() =>
+        AwgTunnelService.IsConnected || AwgTunnelService.IsTunnelServiceRunning();
+
+    private static async Task<bool> WaitForInternetAsync()
+    {
+        await Task.Delay(TunnelWarmupDelay);
+        for (var attempt = 0; attempt < InternetProbeAttempts; attempt++)
+        {
+            if (await VpnTunnelProbe.TestInternetAsync())
+                return true;
+            if (attempt < InternetProbeAttempts - 1)
+                await Task.Delay(InternetProbeDelay);
+        }
+        return false;
+    }
+
+    internal static string? LocalizeAwgError(string? error)
+    {
+        if (error is not { Length: > 0 } message)
+            return null;
+
+        return message switch
+        {
+            "Administrator privileges required (UAC declined)" => I18n.T("awg_uac_required"),
+            "Timed out waiting for elevated tunnel install" => I18n.T("awg_tunnel_timeout"),
+            "awg_tunnel_service.exe not found next to vpn-sc.exe" => I18n.T("awg_helper_missing"),
+            _ when message.StartsWith("Cannot write config file:", StringComparison.OrdinalIgnoreCase)
+                => I18n.T("awg_config_write_failed", ("detail", message)),
+            _ when message.StartsWith("awg_tunnel_service.exe failed", StringComparison.OrdinalIgnoreCase)
+                => I18n.T("awg_helper_failed", ("detail", message)),
+            _ => message
+        };
     }
 }

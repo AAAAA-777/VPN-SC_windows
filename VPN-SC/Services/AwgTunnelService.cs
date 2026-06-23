@@ -53,7 +53,7 @@ public static class AwgTunnelService
             return (false, result.err);
         }
 
-        IsConnected = true;
+        IsConnected = IsTunnelServiceRunning() || result.ok;
         _ = ScheduleConfigDeletionAsync(configPath);
         return (true, null);
     }
@@ -230,7 +230,12 @@ public static class AwgTunnelService
         }
         if (File.Exists(statusPath))
             return ReadStatusFile(statusPath);
-        return (true, null);
+        if (IsTunnelServiceRunning())
+        {
+            IsConnected = true;
+            return (true, null);
+        }
+        return (false, "Tunnel helper finished without status");
     }
 
     private static (bool ok, string? error) ReadStatusFile(string path)

@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Windows;
@@ -111,12 +112,19 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _profileTitleText = "";
     [ObservableProperty] private string _profileEmail = "—";
     [ObservableProperty] private string _profileSubscriptionText = "";
+    [ObservableProperty] private bool _profileSubscriptionActive;
+    [ObservableProperty] private string _profileSubscriptionBadgeText = "";
+    [ObservableProperty] private string _profileEmailLabelText = "";
+    [ObservableProperty] private string _profileSubscriptionLabelText = "";
     [ObservableProperty] private string _deviceManagementText = "";
+    [ObservableProperty] private string _deviceManagementSubText = "";
+    [ObservableProperty] private string _profileIdText = "";
 
     // Sessions
     [ObservableProperty] private string _sessionsTitleText = "";
-    [ObservableProperty] private string _terminateSessionText = "";
-    [ObservableProperty] private SessionItemViewModel? _selectedSession;
+    [ObservableProperty] private bool _sessionsEmpty;
+    [ObservableProperty] private string _sessionsEmptyTitle = "";
+    [ObservableProperty] private string _sessionsEmptyMessage = "";
 
     public ObservableCollection<string> Servers { get; } = new();
     public ObservableCollection<ServerItemViewModel> ServerItems { get; } = new();
@@ -157,7 +165,12 @@ public partial class MainViewModel : ObservableObject
             RefreshServerItems();
     }
 
-    partial void OnSelectedServerChanged(string? value) => UpdateServerDisplay();
+    partial void OnSelectedServerChanged(string? value)
+    {
+        if (value != null && _wgServerIdByName.TryGetValue(value, out var wgId))
+            _selectedWgServerId = wgId;
+        UpdateServerDisplay();
+    }
 
     partial void OnAutostartEnabledChanged(bool value)
     {
@@ -241,9 +254,14 @@ public partial class MainViewModel : ObservableObject
         AppInfoTitleText = I18n.T("app_info_title");
         CheckUpdatesText = I18n.T("check_updates");
         ProfileTitleText = I18n.T("profile_title");
+        ProfileEmailLabelText = I18n.T("profile_email_label");
+        ProfileSubscriptionLabelText = I18n.T("profile_subscription_label");
         DeviceManagementText = I18n.T("device_management");
-        SessionsTitleText = I18n.T("sessions");
-        TerminateSessionText = I18n.T("end_session");
+        DeviceManagementSubText = I18n.T("device_management_subtitle");
+        SessionsTitleText = I18n.T("device_management");
+        SessionsEmptyTitle = I18n.T("no_active_devices");
+        SessionsEmptyMessage = I18n.T("all_devices_disconnected");
+        ProfileSubscriptionBadgeText = I18n.T("subscription_inactive_title");
 
         VersionInfoText = I18n.T("version_label") + ": " + AutoUpdateService.GetCurrentVersion();
         UpdateProtocolDisplay();
@@ -474,6 +492,17 @@ public partial class MainViewModel : ObservableObject
         var connected = false;
         try
         {
+            if (!FileManagerService.CheckRequiredFiles())
+            {
+                var (filesOk, _) = await FileManagerService.DownloadMissingFilesAsync();
+                if (!filesOk || !FileManagerService.CheckRequiredFiles())
+                {
+                    MessageBox.Show(I18n.T("vpn_files_missing"), I18n.T("app_name"),
+                        MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+            }
+
             var (ok, err) = await VpnOrchestrator.StartAsync(userUuid, server, accessToken, wgServerId);
             if (!ok)
             {
@@ -658,17 +687,38 @@ public partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task TerminateSessionAsync()
+    private async Task TerminateSessionAsync(SessionItemViewModel? session)
     {
-        if (_accessToken is not { Length: > 0 } accessToken || SelectedSession == null || string.IsNullOrEmpty(SelectedSession.Id))
+        if (_accessToken is not { Length: > 0 } accessToken || session == null ||
+            string.IsNullOrEmpty(session.Id) || !session.CanTerminate)
             return;
-        var r = await ApiService.TerminateSessionAsync(accessToken, SelectedSession.Id);
+
+        var confirm = MessageBox.Show(
+            I18n.T("terminate_device_confirm", ("device", session.DeviceName)),
+            I18n.T("end_session"),
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+        if (confirm != MessageBoxResult.Yes)
+            return;
+
+        var r = await ApiService.TerminateSessionAsync(accessToken, session.Id);
         if (ApiService.IsSuccess(r))
+        {
             await LoadSessionsAsync();
+            await LoadProfileAsync();
+            MessageBox.Show(I18n.T("session_ended"), I18n.T("device_management"),
+                MessageBoxButton.OK, MessageBoxImage.Information);
+        }
         else
+        {
             MessageBox.Show(
-                r?.TryGetProperty("error", out var er) == true ? er.GetString() : "?",
-                I18n.T("sessions"), MessageBoxButton.OK, MessageBoxImage.Warning);
+                r?.TryGetProperty("error", out var er) == true
+                    ? er.GetString() ?? I18n.T("terminate_device_error")
+                    : I18n.T("terminate_device_error"),
+                I18n.T("device_management"),
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
     }
 
     public async Task OnClosingAsync()
@@ -926,6 +976,9 @@ public partial class MainViewModel : ObservableObject
     {
         ProfileEmail = "—";
         ProfileSubscriptionText = "";
+        ProfileIdText = "";
+        ProfileSubscriptionActive = false;
+        ProfileSubscriptionBadgeText = I18n.T("subscription_inactive_title");
         if (_accessToken is not { Length: > 0 } accessToken)
             return;
         try
@@ -939,10 +992,17 @@ public partial class MainViewModel : ObservableObject
                 if (stored != null)
                     FillProfileFromUser(stored.Value);
             }
+
+            var count = await CountActiveSessionsAsync(accessToken);
+            UpdateDeviceManagementSubText(count);
+
+            if (string.IsNullOrEmpty(ProfileIdText))
+                ProfileIdText = FormatProfileIdText(await StorageService.GetUserUuidAsync());
         }
         catch
         {
             ProfileEmail = "—";
+            ProfileIdText = "";
         }
     }
 
@@ -950,6 +1010,9 @@ public partial class MainViewModel : ObservableObject
     {
         ProfileEmail = (user.TryGetProperty("mail", out var m) ? m.GetString()
             : user.TryGetProperty("email", out var e) ? e.GetString() : null) ?? "—";
+        ProfileIdText = user.TryGetProperty("uuid", out var uuidEl)
+            ? FormatProfileIdText(uuidEl.GetString())
+            : "";
         var days = 0;
         if (user.TryGetProperty("subscription_days", out var sd))
         {
@@ -961,15 +1024,45 @@ public partial class MainViewModel : ObservableObject
 
         ProfileSubscriptionText = days > 0
             ? I18n.T("subscription_active_until", ("date", I18n.FormatSubscriptionEndDate(days)))
+            : I18n.T("subscription_inactive_message");
+        ProfileSubscriptionActive = days > 0;
+        ProfileSubscriptionBadgeText = days > 0
+            ? I18n.T("subscription_active_badge")
             : I18n.T("subscription_inactive_title");
+    }
+
+    private static string FormatProfileIdText(string? uuid)
+    {
+        if (uuid is not { Length: > 0 } value)
+            return "";
+        var parts = value.Split('-');
+        if (parts.Length == 0)
+            return "";
+        var last = parts[parts.Length - 1];
+        if (string.IsNullOrWhiteSpace(last))
+            return "";
+        return I18n.T("id_label") + ": " + last;
     }
 
     private async Task LoadSessionsAsync()
     {
         SessionItems.Clear();
+        SessionsEmpty = true;
         if (_accessToken is not { Length: > 0 } accessToken)
             return;
-        var json = await ApiService.GetSessionsListAsync(accessToken);
+
+        JsonElement? json;
+        try
+        {
+            json = await ApiService.GetSessionsListAsync(accessToken);
+        }
+        catch
+        {
+            MessageBox.Show(I18n.T("devices_load_error"), I18n.T("device_management"),
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
         if (json == null || !ApiService.IsSuccess(json) ||
             !json.Value.TryGetProperty("active_sessions", out var arr) ||
             arr.ValueKind != JsonValueKind.Array)
@@ -979,12 +1072,100 @@ public partial class MainViewModel : ObservableObject
         {
             if (el.ValueKind != JsonValueKind.Object)
                 continue;
-            var id = "";
-            if (el.TryGetProperty("id", out var idP))
-                id = idP.ValueKind == JsonValueKind.String ? idP.GetString() ?? "" : idP.GetRawText();
-            var name = el.TryGetProperty("device_name", out var dn) ? dn.GetString() ?? "?" : "?";
-            var plat = el.TryGetProperty("platform", out var pl) ? pl.GetString() ?? "" : "";
-            SessionItems.Add(new SessionItemViewModel { Id = id, Display = $"{name}  ({plat})" });
+            SessionItems.Add(CreateSessionItem(el));
+        }
+
+        SessionsEmpty = SessionItems.Count == 0;
+        UpdateDeviceManagementSubText(SessionItems.Count);
+    }
+
+    private static SessionItemViewModel CreateSessionItem(JsonElement el)
+    {
+        var id = "";
+        if (el.TryGetProperty("id", out var idP))
+            id = idP.ValueKind == JsonValueKind.String ? idP.GetString() ?? "" : idP.GetRawText();
+
+        var name = el.TryGetProperty("device_name", out var dn) ? dn.GetString() ?? "" : "";
+        if (string.IsNullOrWhiteSpace(name))
+            name = I18n.T("unknown_device");
+
+        var platformKey = el.TryGetProperty("platform", out var pl) ? pl.GetString() ?? "" : "";
+        // IP скрыт из UI; раскомментировать при возврате поля в карточку устройства.
+        // var ip = el.TryGetProperty("ip_address", out var ipP) ? ipP.GetString() ?? "" : "";
+        // if (string.IsNullOrWhiteSpace(ip))
+        //     ip = I18n.T("unknown");
+        var ip = string.Empty;
+
+        var created = el.TryGetProperty("created_at", out var cr) ? cr.GetString() : null;
+        var lastActivity = el.TryGetProperty("last_activity", out var la) ? la.GetString() : null;
+        var status = el.TryGetProperty("status", out var st) ? st.GetString() ?? "" : "";
+        var isActive = string.Equals(status, "active", StringComparison.OrdinalIgnoreCase);
+        var isCurrent = IsCurrentDeviceName(name);
+
+        return new SessionItemViewModel
+        {
+            Id = id,
+            DeviceName = name,
+            PlatformKey = platformKey,
+            PlatformText = FormatPlatform(platformKey),
+            IpAddress = ip,
+            CreatedText = FormatSessionDate(created),
+            LastActivityText = FormatSessionDate(lastActivity),
+            HasLastActivity = !string.IsNullOrWhiteSpace(lastActivity),
+            IsCurrentDevice = isCurrent,
+            IsActive = isActive,
+            CanTerminate = !isCurrent,
+            // IpLabel = I18n.T("ip_address"),
+            IpLabel = string.Empty,
+            CreatedLabel = I18n.T("created"),
+            LastActivityLabel = I18n.T("last_activity"),
+            CurrentDeviceText = I18n.T("current"),
+            TerminateButtonText = I18n.T("end_session")
+        };
+    }
+
+    private static bool IsCurrentDeviceName(string? name) =>
+        string.Equals(name, "VPN Security Connect", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "Windows VPN Client", StringComparison.OrdinalIgnoreCase);
+
+    private static string FormatPlatform(string? platform) =>
+        (platform ?? "").ToLowerInvariant() switch
+        {
+            "android" => "Android",
+            "ios" => "iOS",
+            "app" => "Windows",
+            _ => string.IsNullOrWhiteSpace(platform) ? I18n.T("unknown") : platform!
+        };
+
+    private static string FormatSessionDate(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return I18n.T("unknown");
+        if (DateTime.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var dt) ||
+            DateTime.TryParse(raw, CultureInfo.CurrentCulture, DateTimeStyles.None, out dt))
+            return dt.ToLocalTime().ToString("dd.MM.yyyy HH:mm", CultureInfo.CurrentCulture);
+        return raw!;
+    }
+
+    private void UpdateDeviceManagementSubText(int count) =>
+        DeviceManagementSubText = count > 0
+            ? I18n.T("active_devices_count", ("count", count))
+            : I18n.T("device_management_subtitle");
+
+    private async Task<int> CountActiveSessionsAsync(string accessToken)
+    {
+        try
+        {
+            var json = await ApiService.GetSessionsListAsync(accessToken);
+            if (json == null || !ApiService.IsSuccess(json) ||
+                !json.Value.TryGetProperty("active_sessions", out var arr) ||
+                arr.ValueKind != JsonValueKind.Array)
+                return 0;
+            return arr.GetArrayLength();
+        }
+        catch
+        {
+            return 0;
         }
     }
 
