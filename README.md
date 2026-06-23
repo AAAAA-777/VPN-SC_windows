@@ -17,8 +17,8 @@ cd s:\vpn_sc_v2
 - MVVM (CommunityToolkit.Mvvm)
 - Навигация: ContentControl + enum AppPage (без NavigationView Frame)
 - Xray: `Xray-win7-*` на Win7, `Xray-windows-*` на Win10+
-- Шифрование: XOR+MD5 как во Flutter (`%AppData%\VpnSecurityConnect\prefs.json`)
+- Шифрование: DPAPI (`%AppData%\VpnSecurityConnect\prefs.json`)
 
 ## Правило
 
-Все изменения только в `s:\vpn_sc_v2`. `S:\vpn_sc` и `D:\awg` — только референс.
+Все изменения в `VPN-SC/`. Сборка: `.\scripts\build.ps1`

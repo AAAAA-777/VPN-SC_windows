@@ -10,10 +10,10 @@ if (-not (Test-Path $nativeExe)) {
 }
 
 if (Get-Command dotnet -ErrorAction SilentlyContinue) {
-    dotnet restore VpnSc\VpnSc.csproj
-    dotnet build VpnSc\VpnSc.csproj -c Release
+    dotnet restore VPN-SC\VPN-SC.csproj
+    dotnet build VPN-SC\VPN-SC.csproj -c Release
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-    $out = Join-Path $Root "VpnSc\bin\Release\net48"
+    $out = Join-Path $Root "VPN-SC\bin\Release\net48"
     Write-Host "Output: $out\vpn-sc.exe" -ForegroundColor Green
     if (Test-Path (Join-Path $out "awg_tunnel_service.exe")) {
         Write-Host "AWG helper copied to output." -ForegroundColor Green
