@@ -6,7 +6,6 @@ namespace VpnSc.Services;
 /// <summary>Локальные уведомления Windows Toast — как Flutter <c>LocalNotificationService</c>.</summary>
 public static class LocalNotificationService
 {
-  private const string AppUserModelId = "VPN-SC.SecurityConnect";
   private const int IdVpnConnected = 1;
   private const int IdVpnDisconnected = 2;
 

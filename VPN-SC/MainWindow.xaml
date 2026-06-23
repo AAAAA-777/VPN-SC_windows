@@ -200,6 +200,7 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
                 <Border Grid.Row="0" Style="{StaticResource VpnWpfUiToolbar}">
@@ -380,6 +381,17 @@
                                        Style="{StaticResource VpnBodyText}" FontWeight="Medium"/>
                         </Grid>
                     </StackPanel>
+                </Border>
+
+                <Border Grid.Row="3" Padding="16,10,16,14" Background="Transparent"
+                        Visibility="{Binding UpdateBannerVisible, Converter={StaticResource BoolVis}}">
+                    <TextBlock HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap">
+                        <Hyperlink Command="{Binding OpenSettingsCommand}"
+                                   Foreground="{StaticResource VpnConnectBrush}"
+                                   TextDecorations="None">
+                            <Run Text="{Binding MainUpdateLinkText, Mode=OneWay}"/>
+                        </Hyperlink>
+                    </TextBlock>
                 </Border>
             </Grid>
 
@@ -573,7 +585,7 @@
                             <StackPanel>
                                 <TextBlock Text="{Binding UpdateBannerText}" FontWeight="SemiBold"
                                            Foreground="{StaticResource VpnConnectBrush}" TextWrapping="Wrap"/>
-                                <ui:Button Appearance="Secondary" Content="{Binding CheckUpdatesText}" Margin="0,10,0,0"
+                                <ui:Button Appearance="Secondary" Content="{Binding UpdateAppButtonText}" Margin="0,10,0,0"
                                            Command="{Binding CheckUpdatesCommand}" HorizontalAlignment="Left"/>
                             </StackPanel>
                         </ui:Card>

@@ -106,7 +106,7 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _infoWindowsText = "";
     [ObservableProperty] private bool _updateBannerVisible;
     [ObservableProperty] private string _updateBannerText = "";
-    [ObservableProperty] private string _checkUpdatesText = "";
+    [ObservableProperty] private string _mainUpdateLinkText = "";
 
     // Profile
     [ObservableProperty] private string _profileTitleText = "";
@@ -139,6 +139,8 @@ public partial class MainViewModel : ObservableObject
     private readonly Dictionary<string, string> _wgServerIdByName = new(StringComparer.Ordinal);
     private string? _selectedWgServerId;
     private bool _loadingSettings;
+    private string? _latestAvailableVersion;
+    private string? _latestDownloadUrl;
 
     public MainViewModel()
     {
@@ -252,7 +254,7 @@ public partial class MainViewModel : ObservableObject
         LanguageTitleText = I18n.T("language_title");
         LanguageSubText = I18n.T("language_subtitle");
         AppInfoTitleText = I18n.T("app_info_title");
-        CheckUpdatesText = I18n.T("check_updates");
+        MainUpdateLinkText = I18n.T("update_main_link");
         ProfileTitleText = I18n.T("profile_title");
         ProfileEmailLabelText = I18n.T("profile_email_label");
         ProfileSubscriptionLabelText = I18n.T("profile_subscription_label");
@@ -273,6 +275,15 @@ public partial class MainViewModel : ObservableObject
         UpdatePageTitle();
         if (ServerItems.Count > 0)
             RefreshServerItems();
+    }
+
+    private async Task RefreshUpdateStateAsync()
+    {
+        var (hasUpdate, url, latest) = await AutoUpdateService.CheckForUpdatesAsync();
+        _latestAvailableVersion = hasUpdate ? latest : null;
+        _latestDownloadUrl = hasUpdate ? url : null;
+        UpdateBannerVisible = hasUpdate;
+        UpdateBannerText = hasUpdate ? I18n.T("update_available") + " — " + latest : "";
     }
 
     private void UpdatePageTitle() =>
@@ -346,9 +357,13 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private async Task UpdateAppAsync()
     {
-        var ok = await AutoUpdateService.StartUpdateAsync();
+        var (ok, error) = await AutoUpdateService.StartUpdateAsync(_latestDownloadUrl);
         if (!ok)
-            MessageBox.Show(I18n.T("connection_error"), I18n.T("update_app_button"),
+            MessageBox.Show(
+                string.IsNullOrEmpty(error)
+                    ? I18n.T("update_download_failed")
+                    : I18n.T("update_download_failed_detail", ("detail", error)),
+                I18n.T("update_app_button"),
                 MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
@@ -653,17 +668,24 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private async Task CheckUpdatesAsync()
     {
-        var (has, url, latest) = await AutoUpdateService.CheckForUpdatesAsync();
-        if (!has)
-        {
-            MessageBox.Show(AutoUpdateService.GetCurrentVersion() + " — OK",
-                I18n.T("check_updates"), MessageBoxButton.OK, MessageBoxImage.Information);
+        if (!UpdateBannerVisible)
+            await RefreshUpdateStateAsync();
+        if (!UpdateBannerVisible)
             return;
-        }
-        if (MessageBox.Show(latest + "\n" + url, I18n.T("update_available"),
-                MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+
+        var latest = _latestAvailableVersion ?? AutoUpdateService.GetCurrentVersion();
+        if (MessageBox.Show(I18n.T("update_confirm_message", ("version", latest)),
+                I18n.T("update_available"), MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
             return;
-        await AutoUpdateService.StartUpdateAsync();
+
+        var (ok, error) = await AutoUpdateService.StartUpdateAsync(_latestDownloadUrl);
+        if (!ok)
+            MessageBox.Show(
+                string.IsNullOrEmpty(error)
+                    ? I18n.T("update_download_failed")
+                    : I18n.T("update_download_failed_detail", ("detail", error)),
+                I18n.T("update_app_button"),
+                MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
     [RelayCommand]
@@ -753,6 +775,7 @@ public partial class MainViewModel : ObservableObject
         ClearNavigation();
         CurrentPage = AppPage.Main;
         RefreshTexts();
+        await RefreshUpdateStateAsync();
     }
 
     private async Task LoadServersAsync()
@@ -895,9 +918,7 @@ public partial class MainViewModel : ObservableObject
             UpdateInfoAutostartText();
             UpdateInfoWindowsText();
 
-            var (hasUpdate, _, latest) = await AutoUpdateService.CheckForUpdatesAsync();
-            UpdateBannerVisible = hasUpdate;
-            UpdateBannerText = hasUpdate ? I18n.T("update_available") + " — " + latest : "";
+            await RefreshUpdateStateAsync();
         }
         finally
         {
