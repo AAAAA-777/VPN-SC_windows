@@ -24,7 +24,7 @@ public static class AutoUpdateService
     public static string GetCurrentVersion()
     {
         var v = Assembly.GetExecutingAssembly().GetName().Version;
-        return v == null ? "1.0.3" : $"{v.Major}.{v.Minor}.{v.Build}";
+        return v == null ? "1.0.10" : $"{v.Major}.{v.Minor}.{v.Build}";
     }
 
     private static HttpClient CreateHttpClient(bool useSystemProxy, TimeSpan timeout)

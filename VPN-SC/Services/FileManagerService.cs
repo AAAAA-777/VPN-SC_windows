@@ -11,6 +11,10 @@ public static class FileManagerService
 {
     private const string InstallBaseUrl = "https://vpn-sc.com/install";
     private const string XrayReleaseTag = "v25.12.8";
+    private const string GeoipFallbackUrl =
+        "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat";
+    private const string GeositeFallbackUrl =
+        "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat";
     public const string VpnDir = "connect";
 
     public static readonly IReadOnlyDictionary<string, string> RequiredFiles =
@@ -26,7 +30,8 @@ public static class FileManagerService
     private static HttpClient CreateHttp()
     {
         var c = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
-        c.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "VPN-Security-Connect/1.0.7");
+        c.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent",
+            "VPN-Security-Connect/" + AutoUpdateService.GetCurrentVersion());
         return c;
     }
 
@@ -51,8 +56,12 @@ public static class FileManagerService
     {
         foreach (var name in RequiredFiles.Keys)
         {
-            if (!File.Exists(Path.Combine(GetConnectDirectory(), name)))
+            var path = Path.Combine(GetConnectDirectory(), name);
+            if (!IsValidVpnFile(name, path))
+            {
+                TryDeleteFile(path);
                 return false;
+            }
         }
         return true;
     }
@@ -71,13 +80,13 @@ public static class FileManagerService
                 continue;
 
             log?.Report($"Downloading {kv.Key}...");
-            if (await DownloadFileAsync(kv.Value, dest, log))
+            if (await DownloadFileAsync(kv.Value, dest, kv.Key, log))
             {
                 downloaded++;
                 continue;
             }
 
-            if (kv.Key == "xray.exe" && await DownloadAndExtractXrayFromGitHubAsync(log))
+            if (await TryDownloadFallbackAsync(kv.Key, dest, log))
             {
                 downloaded++;
                 continue;
@@ -97,9 +106,24 @@ public static class FileManagerService
         return (false, "Failed: " + string.Join(", ", failed));
     }
 
+    private static async Task<bool> TryDownloadFallbackAsync(
+        string fileName,
+        string dest,
+        IProgress<string>? log)
+    {
+        return fileName switch
+        {
+            "xray.exe" => await DownloadAndExtractXrayFromGitHubAsync(log),
+            "geoip.dat" => await DownloadFileAsync(GeoipFallbackUrl, dest, fileName, log),
+            "geosite.dat" => await DownloadFileAsync(GeositeFallbackUrl, dest, fileName, log),
+            _ => false
+        };
+    }
+
     private static async Task<bool> DownloadFileAsync(
         string url,
         string dest,
+        string expectedFileName,
         IProgress<string>? log = null)
     {
         try
@@ -108,12 +132,86 @@ public static class FileManagerService
             if (bytes.Length == 0)
                 return false;
             await FileCompat.WriteAllBytesAsync(dest, bytes);
-            return File.Exists(dest) && new FileInfo(dest).Length > 0;
+            if (!IsValidVpnFile(expectedFileName, dest))
+            {
+                log?.Report($"{expectedFileName}: invalid file from {url}");
+                TryDeleteFile(dest);
+                return false;
+            }
+
+            return true;
         }
         catch (Exception ex)
         {
             log?.Report($"{Path.GetFileName(dest)} failed: {ex.Message}");
+            TryDeleteFile(dest);
             return false;
+        }
+    }
+
+    private static bool IsValidVpnFile(string fileName, string path)
+    {
+        if (!File.Exists(path))
+            return false;
+
+        var info = new FileInfo(path);
+        if (info.Length < 1024)
+            return false;
+
+        try
+        {
+            using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            var header = new byte[16];
+            var read = fs.Read(header, 0, header.Length);
+            if (read >= 2 && LooksLikeHtml(header, read))
+                return false;
+
+            if (string.Equals(fileName, "xray.exe", StringComparison.OrdinalIgnoreCase))
+            {
+                if (info.Length < 512 * 1024)
+                    return false;
+                return header[0] == (byte)'M' && header[1] == (byte)'Z';
+            }
+
+            if (fileName.EndsWith(".dat", StringComparison.OrdinalIgnoreCase))
+                return info.Length > 1024 * 1024;
+
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool LooksLikeHtml(byte[] header, int read)
+    {
+        if (read < 2)
+            return false;
+
+        if (header[0] == (byte)'<' && header[1] == (byte)'!')
+            return true;
+        if (read >= 5 &&
+            header[0] == (byte)'<' &&
+            header[1] == (byte)'h' &&
+            header[2] == (byte)'t' &&
+            header[3] == (byte)'m' &&
+            header[4] == (byte)'l')
+            return true;
+
+        return false;
+    }
+
+    private static void TryDeleteFile(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+                File.Delete(path);
+        }
+        catch
+        {
+            /* ignore */
         }
     }
 
@@ -139,7 +237,13 @@ public static class FileManagerService
                 }
                 var dest = GetXrayPath();
                 File.Copy(xraySrc, dest, true);
-                return File.Exists(dest);
+                if (!IsValidVpnFile("xray.exe", dest))
+                {
+                    TryDeleteFile(dest);
+                    return false;
+                }
+
+                return true;
             }
             finally
             {
