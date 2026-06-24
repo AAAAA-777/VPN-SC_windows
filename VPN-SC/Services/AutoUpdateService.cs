@@ -180,7 +180,7 @@ public static class AutoUpdateService
         string installerPath,
         IProgress<(int received, int? total)>? progress)
     {
-        PrepareDownloadPaths(partPath, installerPath);
+        await PrepareDownloadPathsAsync(partPath, installerPath);
 
         if (await TryDownloadWithCurlAsync(url, partPath, installerPath))
             return (true, null);
@@ -189,7 +189,7 @@ public static class AutoUpdateService
         if (direct.ok)
             return direct;
 
-        PrepareDownloadPaths(partPath, installerPath);
+        await PrepareDownloadPathsAsync(partPath, installerPath);
         var viaProxy = await TryDownloadWithHttpAsync(DownloadHttpWithProxy, url, partPath, installerPath, progress);
         if (viaProxy.ok)
             return viaProxy;
@@ -197,10 +197,10 @@ public static class AutoUpdateService
         return (false, viaProxy.error ?? direct.error ?? "download_failed");
     }
 
-    private static void PrepareDownloadPaths(string partPath, string installerPath)
+    private static async Task PrepareDownloadPathsAsync(string partPath, string installerPath)
     {
-        TryDeleteFile(partPath);
-        TryDeleteFile(installerPath);
+        await TryDeleteFileAsync(partPath);
+        await TryDeleteFileAsync(installerPath);
     }
 
     private static async Task<(bool ok, string? error)> TryDownloadWithHttpAsync(
@@ -214,7 +214,7 @@ public static class AutoUpdateService
         {
             try
             {
-                TryDeleteFile(partPath);
+                await TryDeleteFileAsync(partPath);
                 using var resp = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
                 if (!resp.IsSuccessStatusCode)
                     return (false, $"HTTP {(int)resp.StatusCode}");
@@ -234,21 +234,21 @@ public static class AutoUpdateService
                     }
                 }
 
-                return FinalizeDownload(partPath, installerPath);
+                return await FinalizeDownloadAsync(partPath, installerPath);
             }
             catch (IOException) when (attempt < FileLockRetryCount - 1)
             {
-                TryDeleteFile(partPath);
+                await TryDeleteFileAsync(partPath);
                 await Task.Delay(FileLockRetryDelay);
             }
             catch (Exception ex)
             {
-                TryDeleteFile(partPath);
+                await TryDeleteFileAsync(partPath);
                 return (false, ex.Message);
             }
         }
 
-        TryDeleteFile(partPath);
+        await TryDeleteFileAsync(partPath);
         return (false, I18n.T("update_file_locked"));
     }
 
@@ -260,7 +260,7 @@ public static class AutoUpdateService
             if (!File.Exists(systemCurl))
                 return false;
 
-            TryDeleteFile(partPath);
+            await TryDeleteFileAsync(partPath);
             var psi = new ProcessStartInfo
             {
                 FileName = systemCurl,
@@ -285,31 +285,31 @@ public static class AutoUpdateService
                 {
                     /* ignore */
                 }
-                TryDeleteFile(partPath);
+                await TryDeleteFileAsync(partPath);
                 return false;
             }
 
             if (process.ExitCode != 0)
             {
-                TryDeleteFile(partPath);
+                await TryDeleteFileAsync(partPath);
                 return false;
             }
 
-            var finalized = FinalizeDownload(partPath, installerPath);
+            var finalized = await FinalizeDownloadAsync(partPath, installerPath);
             return finalized.ok;
         }
         catch
         {
-            TryDeleteFile(partPath);
+            await TryDeleteFileAsync(partPath);
             return false;
         }
     }
 
-    private static (bool ok, string? error) FinalizeDownload(string partPath, string installerPath)
+    private static async Task<(bool ok, string? error)> FinalizeDownloadAsync(string partPath, string installerPath)
     {
         if (!IsValidInstallerFile(partPath, out var validationError))
         {
-            TryDeleteFile(partPath);
+            await TryDeleteFileAsync(partPath);
             return (false, validationError);
         }
 
@@ -317,22 +317,22 @@ public static class AutoUpdateService
         {
             try
             {
-                TryDeleteFile(installerPath);
+                await TryDeleteFileAsync(installerPath);
                 File.Move(partPath, installerPath);
                 return (true, null);
             }
             catch (IOException) when (attempt < FileLockRetryCount - 1)
             {
-                Thread.Sleep(FileLockRetryDelay);
+                await Task.Delay(FileLockRetryDelay);
             }
             catch (Exception ex)
             {
-                TryDeleteFile(partPath);
+                await TryDeleteFileAsync(partPath);
                 return (false, ex.Message);
             }
         }
 
-        TryDeleteFile(partPath);
+        await TryDeleteFileAsync(partPath);
         return (false, I18n.T("update_file_locked"));
     }
 
@@ -371,7 +371,7 @@ public static class AutoUpdateService
         }
     }
 
-    private static void TryDeleteFile(string path)
+    private static async Task TryDeleteFileAsync(string path)
     {
         for (var attempt = 0; attempt < 3; attempt++)
         {
@@ -383,7 +383,7 @@ public static class AutoUpdateService
             }
             catch (IOException) when (attempt < 2)
             {
-                Thread.Sleep(200);
+                await Task.Delay(200);
             }
             catch
             {

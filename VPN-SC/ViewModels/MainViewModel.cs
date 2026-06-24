@@ -793,16 +793,29 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
-    public async Task OnClosingAsync()
+    public async Task<bool> OnClosingAsync()
     {
         using var cts = new CancellationTokenSource(ShutdownStopTimeout);
         try
         {
-            _ = await VpnOrchestrator.StopAsync(cts.Token);
+            var stopResult = await VpnOrchestrator.StopAsync(cts.Token);
+            if (!stopResult.ok && SyncVpnStateFromRuntime())
+            {
+                ShowStopError(stopResult.error);
+                return false;
+            }
+
+            return true;
         }
-        catch
+        catch (Exception ex)
         {
-            /* ignore */
+            if (SyncVpnStateFromRuntime())
+            {
+                ShowStopError(ex.Message);
+                return false;
+            }
+
+            return true;
         }
     }
 

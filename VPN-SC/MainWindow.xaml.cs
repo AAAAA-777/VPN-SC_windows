@@ -132,16 +132,24 @@ public partial class MainWindow : FluentWindow
 
         _closeInProgress = true;
         IsEnabled = false;
+        var allowClose = false;
         try
         {
             WindowLayoutService.SavePosition(this);
-            await ViewModel.OnClosingAsync();
+            allowClose = await ViewModel.OnClosingAsync();
         }
         finally
         {
-            _allowClose = true;
             _closeInProgress = false;
-            Dispatcher.BeginInvoke(new Action(Close));
         }
+
+        if (!allowClose)
+        {
+            IsEnabled = true;
+            return;
+        }
+
+        _allowClose = true;
+        Dispatcher.BeginInvoke(new Action(Close));
     }
 }
