@@ -6,6 +6,12 @@ namespace VpnSc.Services;
 
 public static class StorageService
 {
+    private static readonly object PrefsLock = new();
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        WriteIndented = true
+    };
+
     private static string StoragePath =>
         Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -32,19 +38,47 @@ public static class StorageService
         public double? window_top { get; set; }
     }
 
-    public static async Task<PrefsDto> LoadPrefsAsync() => await LoadAsync();
+    public static Task<PrefsDto> LoadPrefsAsync() => LoadAsync();
 
-    public static async Task SavePrefsAsync(PrefsDto dto) => await SaveAsync(dto);
+    public static Task SavePrefsAsync(PrefsDto dto) => SaveAsync(dto);
 
-    private static async Task<PrefsDto> LoadAsync()
+    public static Task UpdatePrefsAsync(Action<PrefsDto> update)
+    {
+        if (update == null)
+            throw new ArgumentNullException(nameof(update));
+
+        lock (PrefsLock)
+        {
+            var dto = TryLoadUnsafe();
+            update(dto);
+            SaveUnsafe(dto);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private static Task<PrefsDto> LoadAsync()
+    {
+        lock (PrefsLock)
+            return Task.FromResult(TryLoadUnsafe());
+    }
+
+    private static Task SaveAsync(PrefsDto dto)
+    {
+        if (dto == null)
+            throw new ArgumentNullException(nameof(dto));
+
+        lock (PrefsLock)
+            SaveUnsafe(dto);
+
+        return Task.CompletedTask;
+    }
+
+    private static PrefsDto TryLoadUnsafe()
     {
         try
         {
-            if (!File.Exists(StoragePath))
-                return new PrefsDto();
-            using var fs = File.OpenRead(StoragePath);
-            var dto = await JsonSerializer.DeserializeAsync<PrefsDto>(fs);
-            return dto ?? new PrefsDto();
+            return LoadUnsafe();
         }
         catch
         {
@@ -52,59 +86,116 @@ public static class StorageService
         }
     }
 
-    private static async Task SaveAsync(PrefsDto dto)
+    private static PrefsDto LoadUnsafe()
+    {
+        if (!File.Exists(StoragePath))
+            return new PrefsDto();
+
+        var json = File.ReadAllText(StoragePath);
+        if (string.IsNullOrWhiteSpace(json))
+            return new PrefsDto();
+
+        return JsonSerializer.Deserialize<PrefsDto>(json) ?? new PrefsDto();
+    }
+
+    private static void SaveUnsafe(PrefsDto dto)
     {
         var dir = Path.GetDirectoryName(StoragePath);
         if (!string.IsNullOrEmpty(dir))
             Directory.CreateDirectory(dir);
-        using var fs = File.Create(StoragePath);
-        await JsonSerializer.SerializeAsync(fs, dto,
-            new JsonSerializerOptions { WriteIndented = true });
-    }
 
-    public static async Task MigrateUnencryptedDataAsync()
-    {
-        var dto = await LoadAsync();
-        var changed = false;
+        var tempPath = StoragePath + ".tmp";
+        var backupPath = StoragePath + ".bak";
+        var payload = JsonSerializer.Serialize(dto, JsonOptions);
 
-        if (dto.access_token is { Length: > 0 } accessToken && EncryptionService.NeedsEncryption(accessToken))
+        File.WriteAllText(tempPath, payload, FileCompat.Utf8NoBom);
+
+        try
         {
-            var plain = EncryptionService.Decrypt(accessToken);
-            if (!string.IsNullOrEmpty(plain))
-            {
-                dto.access_token = EncryptionService.Encrypt(plain);
-                changed = true;
-            }
-        }
-
-        if (dto.user_data is { Length: > 0 } userData && EncryptionService.NeedsEncryption(userData))
-        {
-            var plain = EncryptionService.Decrypt(userData);
-            if (!string.IsNullOrEmpty(plain))
+            if (File.Exists(StoragePath))
             {
                 try
                 {
-                    _ = JsonSerializer.Deserialize<JsonElement>(plain);
-                    dto.user_data = EncryptionService.Encrypt(plain);
-                    changed = true;
+                    File.Replace(tempPath, StoragePath, backupPath, true);
                 }
-                catch
+                catch (PlatformNotSupportedException)
                 {
-                    /* ignore invalid legacy payload */
+                    File.Copy(tempPath, StoragePath, true);
+                }
+                catch (IOException)
+                {
+                    File.Copy(tempPath, StoragePath, true);
                 }
             }
+            else
+            {
+                File.Move(tempPath, StoragePath);
+            }
+        }
+        finally
+        {
+            TryDeleteFile(tempPath);
+            TryDeleteFile(backupPath);
+        }
+    }
+
+    private static void TryDeleteFile(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+                File.Delete(path);
+        }
+        catch
+        {
+            /* ignore */
+        }
+    }
+
+    public static Task MigrateUnencryptedDataAsync()
+    {
+        lock (PrefsLock)
+        {
+            var dto = TryLoadUnsafe();
+            var changed = false;
+
+            if (dto.access_token is { Length: > 0 } accessToken && EncryptionService.NeedsEncryption(accessToken))
+            {
+                var plain = EncryptionService.Decrypt(accessToken);
+                if (!string.IsNullOrEmpty(plain))
+                {
+                    dto.access_token = EncryptionService.Encrypt(plain);
+                    changed = true;
+                }
+            }
+
+            if (dto.user_data is { Length: > 0 } userData && EncryptionService.NeedsEncryption(userData))
+            {
+                var plain = EncryptionService.Decrypt(userData);
+                if (!string.IsNullOrEmpty(plain))
+                {
+                    try
+                    {
+                        _ = JsonSerializer.Deserialize<JsonElement>(plain);
+                        dto.user_data = EncryptionService.Encrypt(plain);
+                        changed = true;
+                    }
+                    catch
+                    {
+                        /* ignore invalid legacy payload */
+                    }
+                }
+            }
+
+            if (changed)
+                SaveUnsafe(dto);
         }
 
-        if (changed)
-            await SaveAsync(dto);
+        return Task.CompletedTask;
     }
 
-    public static async Task SaveAccessTokenAsync(string token)
-    {
-        var dto = await LoadAsync();
-        dto.access_token = EncryptionService.Encrypt(token);
-        await SaveAsync(dto);
-    }
+    public static Task SaveAccessTokenAsync(string token) =>
+        UpdatePrefsAsync(dto => dto.access_token = EncryptionService.Encrypt(token));
 
     public static async Task<string?> GetAccessTokenAsync()
     {
@@ -124,12 +215,10 @@ public static class StorageService
         }
     }
 
-    public static async Task SaveUserDataAsync(JsonElement userData)
+    public static Task SaveUserDataAsync(JsonElement userData)
     {
-        var dto = await LoadAsync();
         var json = JsonSerializer.Serialize(userData);
-        dto.user_data = EncryptionService.Encrypt(json);
-        await SaveAsync(dto);
+        return UpdatePrefsAsync(dto => dto.user_data = EncryptionService.Encrypt(json));
     }
 
     public static async Task<JsonElement?> GetUserDataAsync()
@@ -150,12 +239,8 @@ public static class StorageService
         }
     }
 
-    public static async Task SetLoggedInAsync(bool value)
-    {
-        var dto = await LoadAsync();
-        dto.is_logged_in = value;
-        await SaveAsync(dto);
-    }
+    public static Task SetLoggedInAsync(bool value) =>
+        UpdatePrefsAsync(dto => dto.is_logged_in = value);
 
     public static async Task<bool> IsLoggedInAsync()
     {
@@ -163,17 +248,20 @@ public static class StorageService
         return dto.is_logged_in == true;
     }
 
-    public static async Task ClearAllAsync()
+    public static Task ClearAllAsync()
     {
-        var dto = await LoadAsync();
-        var windowLeft = dto.window_left;
-        var windowTop = dto.window_top;
-        dto = new PrefsDto
+        lock (PrefsLock)
         {
-            window_left = windowLeft,
-            window_top = windowTop
-        };
-        await SaveAsync(dto);
+            var dto = TryLoadUnsafe();
+            var cleared = new PrefsDto
+            {
+                window_left = dto.window_left,
+                window_top = dto.window_top
+            };
+            SaveUnsafe(cleared);
+        }
+
+        return Task.CompletedTask;
     }
 
     public static async Task ClearAllWithLogoutAsync()
@@ -202,13 +290,12 @@ public static class StorageService
         return null;
     }
 
-    public static async Task SaveVpnProtocolAsync(VpnProtocol protocol)
-    {
-        var dto = await LoadAsync();
-        dto.vpn_protocol = protocol.StorageValue();
-        dto.legacy_protocol = VpnProtocolExtensions.LegacyLabel(protocol);
-        await SaveAsync(dto);
-    }
+    public static Task SaveVpnProtocolAsync(VpnProtocol protocol) =>
+        UpdatePrefsAsync(dto =>
+        {
+            dto.vpn_protocol = protocol.StorageValue();
+            dto.legacy_protocol = VpnProtocolExtensions.LegacyLabel(protocol);
+        });
 
     public static async Task<VpnProtocol> GetVpnProtocolAsync()
     {
@@ -230,40 +317,37 @@ public static class StorageService
 
     public static (double left, double top)? GetWindowPosition()
     {
-        try
+        lock (PrefsLock)
         {
-            if (!File.Exists(StoragePath))
+            try
+            {
+                var dto = TryLoadUnsafe();
+                if (dto.window_left is not { } left || dto.window_top is not { } top)
+                    return null;
+                return (left, top);
+            }
+            catch
+            {
                 return null;
-            var json = File.ReadAllText(StoragePath);
-            var dto = JsonSerializer.Deserialize<PrefsDto>(json);
-            if (dto?.window_left is not { } left || dto.window_top is not { } top)
-                return null;
-            return (left, top);
-        }
-        catch
-        {
-            return null;
+            }
         }
     }
 
     public static void SaveWindowPosition(double left, double top)
     {
-        try
+        lock (PrefsLock)
         {
-            var dto = File.Exists(StoragePath)
-                ? JsonSerializer.Deserialize<PrefsDto>(File.ReadAllText(StoragePath)) ?? new PrefsDto()
-                : new PrefsDto();
-            dto.window_left = left;
-            dto.window_top = top;
-            var dir = Path.GetDirectoryName(StoragePath);
-            if (!string.IsNullOrEmpty(dir))
-                Directory.CreateDirectory(dir);
-            File.WriteAllText(StoragePath, JsonSerializer.Serialize(dto,
-                new JsonSerializerOptions { WriteIndented = true }));
-        }
-        catch
-        {
-            /* ignore */
+            try
+            {
+                var dto = TryLoadUnsafe();
+                dto.window_left = left;
+                dto.window_top = top;
+                SaveUnsafe(dto);
+            }
+            catch
+            {
+                /* ignore */
+            }
         }
     }
 }

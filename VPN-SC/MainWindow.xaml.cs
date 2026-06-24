@@ -13,6 +13,8 @@ namespace VpnSc;
 public partial class MainWindow : FluentWindow
 {
     public MainViewModel ViewModel { get; }
+    private bool _allowClose;
+    private bool _closeInProgress;
 
     public MainWindow()
     {
@@ -113,7 +115,25 @@ public partial class MainWindow : FluentWindow
 
     private async void MainWindow_OnClosing(object? sender, CancelEventArgs e)
     {
-        WindowLayoutService.SavePosition(this);
-        await ViewModel.OnClosingAsync();
+        if (_allowClose)
+            return;
+
+        e.Cancel = true;
+        if (_closeInProgress)
+            return;
+
+        _closeInProgress = true;
+        IsEnabled = false;
+        try
+        {
+            WindowLayoutService.SavePosition(this);
+            await ViewModel.OnClosingAsync();
+        }
+        finally
+        {
+            _allowClose = true;
+            _closeInProgress = false;
+            Dispatcher.BeginInvoke(new Action(Close));
+        }
     }
 }

@@ -19,6 +19,7 @@ public partial class MainViewModel : ObservableObject
 
     private string? _connectedServerRaw;
     private int _tunnelHealthFailures;
+    private int _statsRefreshInProgress;
 
     private readonly DispatcherTimer _statsTimer = new() { Interval = TimeSpan.FromSeconds(2) };
     private readonly DispatcherTimer _durationTimer = new() { Interval = TimeSpan.FromSeconds(1) };
@@ -1218,35 +1219,45 @@ public partial class MainViewModel : ObservableObject
 
     private async Task RefreshStatsAsync()
     {
-        if (string.IsNullOrEmpty(_accessToken))
+        if (Interlocked.Exchange(ref _statsRefreshInProgress, 1) == 1)
             return;
 
-        if (!IsConnecting)
+        try
         {
-            VpnConnected = VpnOrchestrator.IsConnected;
-            ShowConnectionDetails = VpnConnected;
+            if (string.IsNullOrEmpty(_accessToken))
+                return;
+
+            if (!IsConnecting)
+            {
+                VpnConnected = VpnOrchestrator.IsConnected;
+                ShowConnectionDetails = VpnConnected;
+            }
+
+            UpdateConnectionStatusText();
+
+            if (!VpnConnected)
+            {
+                _tunnelHealthFailures = 0;
+                TrafficUplinkText = "";
+                TrafficDownlinkText = "";
+                return;
+            }
+
+            await CheckTunnelHealthAsync();
+
+            var uuid = await StorageService.GetUserUuidAsync() ?? "";
+            var (_, connected, stats) = await VpnOrchestrator.GetStatusAsync(uuid);
+            if (stats != null)
+            {
+                if (stats.TryGetPropertyValue("uplink", out var up) && up!.GetValue<long>() >= 0)
+                    TrafficUplinkText = "↑ " + FormatBytes(up.GetValue<long>());
+                if (stats.TryGetPropertyValue("downlink", out var down) && down!.GetValue<long>() >= 0)
+                    TrafficDownlinkText = "↓ " + FormatBytes(down.GetValue<long>());
+            }
         }
-
-        UpdateConnectionStatusText();
-
-        if (!VpnConnected)
+        finally
         {
-            _tunnelHealthFailures = 0;
-            TrafficUplinkText = "";
-            TrafficDownlinkText = "";
-            return;
-        }
-
-        await CheckTunnelHealthAsync();
-
-        var uuid = await StorageService.GetUserUuidAsync() ?? "";
-        var (_, connected, stats) = await VpnOrchestrator.GetStatusAsync(uuid);
-        if (stats != null)
-        {
-            if (stats.TryGetPropertyValue("uplink", out var up) && up!.GetValue<long>() >= 0)
-                TrafficUplinkText = "↑ " + FormatBytes(up.GetValue<long>());
-            if (stats.TryGetPropertyValue("downlink", out var down) && down!.GetValue<long>() >= 0)
-                TrafficDownlinkText = "↓ " + FormatBytes(down.GetValue<long>());
+            Interlocked.Exchange(ref _statsRefreshInProgress, 0);
         }
     }
 

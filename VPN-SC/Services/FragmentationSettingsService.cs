@@ -71,13 +71,14 @@ public static class FragmentationSettingsService
 
     public static async Task SaveAsync(FragmentationSettings settings)
     {
-        var dto = await StorageService.LoadPrefsAsync();
-        dto.fragmentation_enabled = settings.Enabled;
-        dto.fragmentation_packets = settings.Packets;
-        dto.fragmentation_length = settings.Length;
-        dto.fragmentation_interval = settings.Interval;
-        dto.fragmentation_max_split = settings.MaxSplit;
-        await StorageService.SavePrefsAsync(dto);
+        await StorageService.UpdatePrefsAsync(dto =>
+        {
+            dto.fragmentation_enabled = settings.Enabled;
+            dto.fragmentation_packets = settings.Packets;
+            dto.fragmentation_length = settings.Length;
+            dto.fragmentation_interval = settings.Interval;
+            dto.fragmentation_max_split = settings.MaxSplit;
+        });
     }
 
     public static async Task<bool> IsAutoTuneEnabledAsync()
@@ -88,9 +89,7 @@ public static class FragmentationSettingsService
 
     public static async Task SetAutoTuneEnabledAsync(bool value)
     {
-        var dto = await StorageService.LoadPrefsAsync();
-        dto.fragmentation_auto = value;
-        await StorageService.SavePrefsAsync(dto);
+        await StorageService.UpdatePrefsAsync(dto => dto.fragmentation_auto = value);
     }
 
     public static async Task<int> GetLastPresetIndexAsync()
@@ -101,9 +100,7 @@ public static class FragmentationSettingsService
 
     public static async Task SetLastPresetIndexAsync(int index)
     {
-        var dto = await StorageService.LoadPrefsAsync();
-        dto.fragmentation_last_profile = index;
-        await StorageService.SavePrefsAsync(dto);
+        await StorageService.UpdatePrefsAsync(dto => dto.fragmentation_last_profile = index);
     }
 
     public static async Task<bool> IsFingerprintAutoEnabledAsync()
@@ -114,9 +111,7 @@ public static class FragmentationSettingsService
 
     public static async Task SetFingerprintAutoEnabledAsync(bool value)
     {
-        var dto = await StorageService.LoadPrefsAsync();
-        dto.fingerprint_auto = value;
-        await StorageService.SavePrefsAsync(dto);
+        await StorageService.UpdatePrefsAsync(dto => dto.fingerprint_auto = value);
     }
 
     public static async Task<string?> GetFingerprintOverrideAsync()
@@ -127,9 +122,8 @@ public static class FragmentationSettingsService
 
     public static async Task SetFingerprintOverrideAsync(string? fingerprint)
     {
-        var dto = await StorageService.LoadPrefsAsync();
-        dto.fingerprint_override = string.IsNullOrWhiteSpace(fingerprint) ? null : fingerprint;
-        await StorageService.SavePrefsAsync(dto);
+        await StorageService.UpdatePrefsAsync(dto =>
+            dto.fingerprint_override = string.IsNullOrWhiteSpace(fingerprint) ? null : fingerprint);
     }
 
     public static async Task SetFragmentationEnabledAsync(bool enabled)
