@@ -119,6 +119,7 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _deviceManagementText = "";
     [ObservableProperty] private string _deviceManagementSubText = "";
     [ObservableProperty] private string _profileIdText = "";
+    [ObservableProperty] private bool _isProfileLoading;
 
     // Sessions
     [ObservableProperty] private string _sessionsTitleText = "";
@@ -1005,15 +1006,15 @@ public partial class MainViewModel : ObservableObject
 
     private async Task LoadProfileAsync()
     {
-        ProfileEmail = "—";
-        ProfileSubscriptionText = "";
-        ProfileIdText = "";
-        ProfileSubscriptionActive = false;
-        ProfileSubscriptionBadgeText = I18n.T("subscription_inactive_title");
-        if (_accessToken is not { Length: > 0 } accessToken)
-            return;
+        IsProfileLoading = true;
         try
         {
+            if (_accessToken is not { Length: > 0 } accessToken)
+            {
+                ResetProfileView();
+                return;
+            }
+
             var json = await ApiService.GetUserInfoAsync(accessToken);
             if (json != null && ApiService.IsSuccess(json) && json.Value.TryGetProperty("user", out var user))
                 FillProfileFromUser(user);
@@ -1022,6 +1023,8 @@ public partial class MainViewModel : ObservableObject
                 var stored = await StorageService.GetUserDataAsync();
                 if (stored != null)
                     FillProfileFromUser(stored.Value);
+                else
+                    ResetProfileView();
             }
 
             var count = await CountActiveSessionsAsync(accessToken);
@@ -1032,9 +1035,22 @@ public partial class MainViewModel : ObservableObject
         }
         catch
         {
-            ProfileEmail = "—";
-            ProfileIdText = "";
+            ResetProfileView();
         }
+        finally
+        {
+            IsProfileLoading = false;
+        }
+    }
+
+    private void ResetProfileView()
+    {
+        ProfileEmail = "—";
+        ProfileSubscriptionText = "";
+        ProfileIdText = "";
+        ProfileSubscriptionActive = false;
+        ProfileSubscriptionBadgeText = I18n.T("subscription_inactive_title");
+        UpdateDeviceManagementSubText(0);
     }
 
     private void FillProfileFromUser(JsonElement user)
