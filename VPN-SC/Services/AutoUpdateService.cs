@@ -5,6 +5,7 @@ using System.Reflection;
 using System.Text.RegularExpressions;
 using System.Threading;
 using VpnSc.Localization;
+using VpnSc.Helpers;
 
 namespace VpnSc.Services;
 
@@ -272,7 +273,22 @@ public static class AutoUpdateService
             if (process == null)
                 return false;
 
-            await Task.Run(() => process.WaitForExit(620000));
+            var exited = await Task.Run(() => process.WaitForExit(620000));
+            if (!exited)
+            {
+                try
+                {
+                    if (!process.HasExited)
+                        ProcessCompat.Kill(process);
+                }
+                catch
+                {
+                    /* ignore */
+                }
+                TryDeleteFile(partPath);
+                return false;
+            }
+
             if (process.ExitCode != 0)
             {
                 TryDeleteFile(partPath);

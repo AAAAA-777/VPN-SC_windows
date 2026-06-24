@@ -178,7 +178,17 @@ public partial class MainViewModel : ObservableObject
     {
         UpdateInfoAutostartText();
         if (!_loadingSettings)
+        {
             AutostartService.SetEnabled(value);
+            var actual = AutostartService.IsEnabled();
+            if (actual != value)
+            {
+                _loadingSettings = true;
+                AutostartEnabled = actual;
+                _loadingSettings = false;
+                UpdateInfoAutostartText();
+            }
+        }
     }
 
     partial void OnLanguageIndexChanged(int value)
@@ -307,7 +317,7 @@ public partial class MainViewModel : ObservableObject
     public async Task BootstrapAsync()
     {
         CurrentPage = AppPage.Loading;
-        await AnalyticsService.SendAnalyticsAsync();
+        _ = AnalyticsService.SendAnalyticsAsync();
         try
         {
             if (!await ConnectivityService.HasInternetConnectionAsync())
@@ -560,7 +570,7 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private async Task DisconnectVpnAsync()
     {
-        if (string.IsNullOrEmpty(_accessToken))
+        if (!VpnConnected && !VpnOrchestrator.IsConnected && !IsConnecting)
             return;
         var disconnectedServer = _connectedServerRaw;
         await VpnOrchestrator.StopAsync();

@@ -167,7 +167,18 @@ public static class VpnAutoTunerService
 
         var configPath = await XrayConfigBuilder.WriteConfigFileAsync(config);
         if (!HiddenProcessService.StartHiddenProcess(xrayPath, "run", "-config", configPath))
+        {
+            try
+            {
+                if (File.Exists(configPath))
+                    File.Delete(configPath);
+            }
+            catch
+            {
+                /* ignore */
+            }
             return false;
+        }
 
         await Task.Delay(TimeSpan.FromSeconds(3));
         var ok = await MeasureDelayAsync();
