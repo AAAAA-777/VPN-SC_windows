@@ -157,7 +157,9 @@ public static class VpnAutoTunerService
         FragmentationSettings fragmentationSettings,
         string? fingerprintOverride)
     {
-        await HiddenProcessService.StopVpnProcessesAsync();
+        var stopBeforeRun = await HiddenProcessService.StopVpnProcessesAsync();
+        if (!stopBeforeRun.ok)
+            return false;
         await Task.Delay(500);
 
         var config = XrayConfigBuilder.Build(server, userUuid, fragmentationSettings, fingerprintOverride);
@@ -182,7 +184,9 @@ public static class VpnAutoTunerService
 
         await Task.Delay(TimeSpan.FromSeconds(3));
         var ok = await MeasureDelayAsync();
-        await HiddenProcessService.StopVpnProcessesAsync();
+        var stopAfterRun = await HiddenProcessService.StopVpnProcessesAsync();
+        if (!stopAfterRun.ok)
+            return false;
 
         try
         {

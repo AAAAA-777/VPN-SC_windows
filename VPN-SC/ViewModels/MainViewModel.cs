@@ -565,7 +565,12 @@ public partial class MainViewModel : ObservableObject
             var (ok, err) = await VpnOrchestrator.StartAsync(userUuid, server, accessToken, wgServerId);
             if (!ok)
             {
-                await VpnModeSwitch.StopAllAsync();
+                var stopAllResult = await VpnModeSwitch.StopAllAsync(CancellationToken.None);
+                if (!stopAllResult.ok && SyncVpnStateFromRuntime())
+                {
+                    ShowStopError(stopAllResult.error);
+                    return;
+                }
                 MessageBox.Show(err ?? I18n.T("connection_error"), I18n.T("app_name"),
                     MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
@@ -585,7 +590,12 @@ public partial class MainViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            await VpnModeSwitch.StopAllAsync();
+            var stopAllResult = await VpnModeSwitch.StopAllAsync(CancellationToken.None);
+            if (!stopAllResult.ok && SyncVpnStateFromRuntime())
+            {
+                ShowStopError(stopAllResult.error);
+                return;
+            }
             MessageBox.Show(ex.Message, I18n.T("app_name"),
                 MessageBoxButton.OK, MessageBoxImage.Error);
         }
@@ -827,7 +837,12 @@ public partial class MainViewModel : ObservableObject
             return;
         }
 
-        await VpnModeSwitch.StopAllAsync();
+        var stopAllResult = await VpnModeSwitch.StopAllAsync(CancellationToken.None);
+        if (!stopAllResult.ok && SyncVpnStateFromRuntime())
+        {
+            ShowStopError(stopAllResult.error);
+            return;
+        }
         VpnConnected = false;
         ShowConnectionDetails = false;
         _connectedServerRaw = null;
@@ -1034,7 +1049,12 @@ public partial class MainViewModel : ObservableObject
 
     private async Task OnProtocolChangedInSettingsAsync()
     {
-        await VpnModeSwitch.StopAllAsync();
+        var stopAllResult = await VpnModeSwitch.StopAllAsync(CancellationToken.None);
+        if (!stopAllResult.ok && SyncVpnStateFromRuntime())
+        {
+            ShowStopError(stopAllResult.error);
+            return;
+        }
         VpnConnected = false;
         ShowConnectionDetails = false;
         _connectedServerRaw = null;
