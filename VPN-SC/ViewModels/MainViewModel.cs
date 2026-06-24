@@ -333,7 +333,23 @@ public partial class MainViewModel : ObservableObject
                 return;
             }
             if (!FileManagerService.CheckRequiredFiles())
-                await FileManagerService.DownloadMissingFilesAsync();
+            {
+                var repairAttempts = 0;
+                var maxRepairAttempts = FileManagerService.RequiredFiles.Count;
+                while (repairAttempts < maxRepairAttempts && !FileManagerService.CheckRequiredFiles())
+                {
+                    repairAttempts++;
+                    var (filesOk, _) = await FileManagerService.DownloadMissingFilesAsync();
+                    if (!filesOk)
+                        break;
+                }
+
+                if (!FileManagerService.CheckRequiredFiles())
+                {
+                    CurrentPage = AppPage.NoInternet;
+                    return;
+                }
+            }
 
             var logged = await StorageService.IsLoggedInAsync();
             var token = await StorageService.GetAccessTokenAsync();
