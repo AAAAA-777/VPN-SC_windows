@@ -9,9 +9,8 @@ public static class VpnOrchestrator
     public static VpnProtocol ActiveProtocolSetting { get; private set; } = VpnProtocol.Auto;
 
     public static bool IsConnected =>
-        VpnSessionService.ActiveStack == VpnActiveStack.Awg
-            ? AwgTunnelService.IsConnected
-            : VpnService.IsVpnRunning();
+        // Runtime truth source: treat either live tunnel as connected, regardless of saved stack.
+        AwgTunnelService.NeedsDisconnect() || VpnService.IsVpnRunning();
 
     public static async Task<(bool ok, string? error)> StartAsync(
         string uuid,
