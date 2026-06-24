@@ -7,6 +7,10 @@ namespace VpnSc.Services;
 
 public static class ConnectivityService
 {
+    private static readonly TimeSpan TotalProbeTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan CurlProbeTimeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan TcpProbeTimeout = TimeSpan.FromSeconds(5);
+
     private static readonly HttpClient Http = new()
     {
         Timeout = TimeSpan.FromSeconds(8)
@@ -35,31 +39,53 @@ public static class ConnectivityService
         ("104.16.132.229", 443),
     };
 
-    public static async Task<bool> HasInternetConnectionAsync()
+    public static Task<bool> HasInternetConnectionAsync() =>
+        HasInternetConnectionAsync(CancellationToken.None);
+
+    public static async Task<bool> HasInternetConnectionAsync(CancellationToken cancellationToken)
     {
-        if (await ProbeWithCurlAsync())
-            return true;
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(TotalProbeTimeout);
+        var token = timeoutCts.Token;
 
-        if (await ProbeWithCurlResolvedAsync())
-            return true;
-
-        if (await ProbeTcpAsync())
-            return true;
-
-        foreach (var url in ProbeUrls)
+        try
         {
-            try
+            if (await ProbeWithCurlAsync(token))
+                return true;
+
+            if (await ProbeWithCurlResolvedAsync(token))
+                return true;
+
+            if (await ProbeTcpAsync(token))
+                return true;
+
+            foreach (var url in ProbeUrls)
             {
-                using var req = new HttpRequestMessage(HttpMethod.Get, url);
-                req.Headers.TryAddWithoutValidation("User-Agent", "VPN-SC APP");
-                using var resp = await Http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
-                if (IsReachableStatusCode((int)resp.StatusCode))
-                    return true;
+                token.ThrowIfCancellationRequested();
+                try
+                {
+                    using var req = new HttpRequestMessage(HttpMethod.Get, url);
+                    req.Headers.TryAddWithoutValidation("User-Agent", "VPN-SC APP");
+                    using var resp = await Http.SendAsync(
+                        req,
+                        HttpCompletionOption.ResponseHeadersRead,
+                        token);
+                    if (IsReachableStatusCode((int)resp.StatusCode))
+                        return true;
+                }
+                catch (OperationCanceledException) when (token.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch
+                {
+                    /* try next */
+                }
             }
-            catch
-            {
-                /* try next */
-            }
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            return false;
         }
 
         return false;
@@ -76,42 +102,56 @@ public static class ConnectivityService
                || s.Contains("no route");
     }
 
-    private static async Task<bool> ProbeWithCurlAsync()
+    private static async Task<bool> ProbeWithCurlAsync(CancellationToken cancellationToken)
     {
         foreach (var url in ProbeUrls)
         {
-            if (await ProbeUrlWithCurlAsync(url))
+            cancellationToken.ThrowIfCancellationRequested();
+            if (await ProbeUrlWithCurlAsync(url, cancellationToken))
                 return true;
         }
         return false;
     }
 
-    private static async Task<bool> ProbeWithCurlResolvedAsync()
+    private static async Task<bool> ProbeWithCurlResolvedAsync(CancellationToken cancellationToken)
     {
         foreach (var (host, ip) in ResolvedProbeHosts)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var url = $"https://{host}/generate_204";
             if (host == "www.microsoft.com")
                 url = $"https://{host}/";
-            if (await ProbeUrlWithCurlAsync(url, $"--resolve {host}:443:{ip} "))
+            if (await ProbeUrlWithCurlAsync(url, $"--resolve {host}:443:{ip} ", cancellationToken))
                 return true;
         }
         return false;
     }
 
-    private static async Task<bool> ProbeTcpAsync()
+    private static async Task<bool> ProbeTcpAsync(CancellationToken cancellationToken)
     {
         foreach (var (host, port) in TcpProbeTargets)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             try
             {
                 using var tcp = new TcpClient();
                 var connectTask = tcp.ConnectAsync(host, port);
-                var completed = await Task.WhenAny(connectTask, Task.Delay(5000));
-                if (completed != connectTask || !tcp.Connected)
+                var timeoutTask = Task.Delay(TcpProbeTimeout, cancellationToken);
+                var completed = await Task.WhenAny(connectTask, timeoutTask);
+                if (completed == timeoutTask)
+                {
+                    if (timeoutTask.IsCanceled)
+                        throw new OperationCanceledException(cancellationToken);
+                    continue;
+                }
+                if (!tcp.Connected)
                     continue;
                 await connectTask;
                 return true;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
             }
             catch
             {
@@ -121,11 +161,17 @@ public static class ConnectivityService
         return false;
     }
 
-    private static Task<bool> ProbeUrlWithCurlAsync(string url) =>
-        ProbeUrlWithCurlAsync(url, extraArgs: "");
+    private static Task<bool> ProbeUrlWithCurlAsync(
+        string url,
+        CancellationToken cancellationToken) =>
+        ProbeUrlWithCurlAsync(url, extraArgs: "", cancellationToken);
 
-    private static async Task<bool> ProbeUrlWithCurlAsync(string url, string extraArgs)
+    private static async Task<bool> ProbeUrlWithCurlAsync(
+        string url,
+        string extraArgs,
+        CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         try
         {
             var curl = ResolveCurlExecutable();
@@ -141,7 +187,8 @@ public static class ConnectivityService
             using var process = Process.Start(psi);
             if (process == null)
                 return false;
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            cts.CancelAfter(CurlProbeTimeout);
             try
             {
                 await ProcessCompat.WaitForExitAsync(process, cts.Token);
@@ -157,6 +204,8 @@ public static class ConnectivityService
                 {
                     /* ignore */
                 }
+                if (cancellationToken.IsCancellationRequested)
+                    throw;
                 return false;
             }
 

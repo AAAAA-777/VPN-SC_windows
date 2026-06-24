@@ -6,6 +6,7 @@ namespace VpnSc.Services;
 public static class AwgVpnService
 {
     private const int InternetProbeAttempts = 8;
+    private static readonly TimeSpan InternetProbeTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan TunnelWarmupDelay = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan InternetProbeDelay = TimeSpan.FromSeconds(2);
 
@@ -108,14 +109,23 @@ public static class AwgVpnService
 
     private static async Task<bool> WaitForInternetAsync()
     {
-        await Task.Delay(TunnelWarmupDelay);
-        for (var attempt = 0; attempt < InternetProbeAttempts; attempt++)
+        using var cts = new CancellationTokenSource(InternetProbeTimeout);
+        try
         {
-            if (await VpnTunnelProbe.TestInternetAsync())
-                return true;
-            if (attempt < InternetProbeAttempts - 1)
-                await Task.Delay(InternetProbeDelay);
+            await Task.Delay(TunnelWarmupDelay, cts.Token);
+            for (var attempt = 0; attempt < InternetProbeAttempts && !cts.IsCancellationRequested; attempt++)
+            {
+                if (await VpnTunnelProbe.TestInternetAsync(cts.Token))
+                    return true;
+                if (attempt < InternetProbeAttempts - 1)
+                    await Task.Delay(InternetProbeDelay, cts.Token);
+            }
         }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
+
         return false;
     }
 

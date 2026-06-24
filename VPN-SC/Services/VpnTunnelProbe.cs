@@ -27,6 +27,9 @@ public static class VpnTunnelProbe
     public static async Task<bool> TestInternetAsync() =>
         await ConnectivityService.HasInternetConnectionAsync();
 
+    public static async Task<bool> TestInternetAsync(CancellationToken cancellationToken) =>
+        await ConnectivityService.HasInternetConnectionAsync(cancellationToken);
+
     private static async Task<bool> ProbeUrlThroughSocksAsync(string url)
     {
         return await ProbeUrlWithCurlAsync(url, useSocks: true);
