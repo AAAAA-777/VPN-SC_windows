@@ -17,12 +17,17 @@ public static class VpnModeSwitch
     /// <summary>
     /// Clears stale VPN state after crash or force-kill (proxy, xray, AWG tunnel).
     /// </summary>
-    public static async Task CleanupOnStartupAsync()
+    public static Task CleanupOnStartupAsync() =>
+        CleanupOnStartupAsync(CancellationToken.None);
+
+    public static async Task CleanupOnStartupAsync(CancellationToken cancellationToken)
     {
         SystemProxyService.DisableSystemProxy();
-        await HiddenProcessService.StopVpnProcessesAsync();
+        cancellationToken.ThrowIfCancellationRequested();
+        await HiddenProcessService.StopVpnProcessesAsync(cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
         if (AwgTunnelService.NeedsDisconnect())
-            await AwgTunnelService.DisconnectAsync();
+            await AwgTunnelService.DisconnectAsync(cancellationToken);
         VpnSessionService.Reset();
     }
 

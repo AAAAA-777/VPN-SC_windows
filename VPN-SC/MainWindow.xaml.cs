@@ -110,6 +110,14 @@ public partial class MainWindow : FluentWindow
     private async void MainWindow_OnLoaded(object sender, RoutedEventArgs e)
     {
         WindowLayoutService.ApplyTo(this);
+        try
+        {
+            await App.WaitForStartupPreparationAsync();
+        }
+        catch
+        {
+            /* ignore startup prep errors */
+        }
         await ViewModel.BootstrapAsync();
     }
 

@@ -8,6 +8,11 @@ namespace VpnSc;
 
 public partial class App : Application
 {
+    private static readonly TimeSpan StartupCleanupTimeout = TimeSpan.FromSeconds(30);
+    private static Task _startupPreparationTask = Task.CompletedTask;
+
+    public static Task WaitForStartupPreparationAsync() => _startupPreparationTask;
+
     protected override async void OnStartup(StartupEventArgs e)
     {
         DispatcherUnhandledException += App_DispatcherUnhandledException;
@@ -24,18 +29,40 @@ public partial class App : Application
 
         try
         {
-            await VpnModeSwitch.CleanupOnStartupAsync();
             var lang = await LanguageService.GetSavedLanguageAsync();
             I18n.SetLanguage(lang);
-            await StorageService.MigrateUnencryptedDataAsync();
         }
         catch
         {
             I18n.SetLanguage("ru");
         }
 
+        _startupPreparationTask = RunStartupPreparationAsync();
+
         var main = new MainWindow();
         main.Show();
+    }
+
+    private static async Task RunStartupPreparationAsync()
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(StartupCleanupTimeout);
+            try
+            {
+                await VpnModeSwitch.CleanupOnStartupAsync(cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                /* ignore startup cleanup timeout */
+            }
+
+            await StorageService.MigrateUnencryptedDataAsync();
+        }
+        catch
+        {
+            /* ignore startup preparation failures */
+        }
     }
 
     private static void App_DispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
