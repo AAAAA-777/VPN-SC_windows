@@ -336,18 +336,27 @@ public partial class MainViewModel : ObservableObject
             {
                 var repairAttempts = 0;
                 var maxRepairAttempts = FileManagerService.RequiredFiles.Count;
+                string filesRepairMessage = null;
                 while (repairAttempts < maxRepairAttempts && !FileManagerService.CheckRequiredFiles())
                 {
                     repairAttempts++;
-                    var (filesOk, _) = await FileManagerService.DownloadMissingFilesAsync();
+                    var (filesOk, message) = await FileManagerService.DownloadMissingFilesAsync();
+                    filesRepairMessage = message;
                     if (!filesOk)
                         break;
                 }
 
                 if (!FileManagerService.CheckRequiredFiles())
                 {
-                    CurrentPage = AppPage.NoInternet;
-                    return;
+                    var details = string.IsNullOrWhiteSpace(filesRepairMessage)
+                        ? string.Empty
+                        : $"\n\n{filesRepairMessage}";
+                    MessageBox.Show(
+                        I18n.T("vpn_files_missing") + details,
+                        I18n.T("app_name"),
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning
+                    );
                 }
             }
 

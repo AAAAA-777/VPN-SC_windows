@@ -4,6 +4,8 @@ namespace VpnSc.Services;
 
 public static class HiddenProcessService
 {
+    private static readonly TimeSpan TaskKillTimeout = TimeSpan.FromSeconds(30);
+
     public static bool StartHiddenProcess(string executable, params string[] arguments)
     {
         try
@@ -42,7 +44,18 @@ public static class HiddenProcessService
                 WindowStyle = ProcessWindowStyle.Hidden
             };
             using var p = Process.Start(psi);
-            if (p != null) await ProcessCompat.WaitForExitAsync(p);
+            if (p == null)
+                return;
+
+            using var cts = new CancellationTokenSource(TaskKillTimeout);
+            try
+            {
+                await ProcessCompat.WaitForExitAsync(p, cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                ProcessCompat.Kill(p);
+            }
         }
         catch { }
     }
