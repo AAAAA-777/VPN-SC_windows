@@ -4,14 +4,26 @@ public static class VpnModeSwitch
 {
     public static async Task StopStealthAsync()
     {
-        await HiddenProcessService.StopVpnProcessesAsync();
+        _ = await StopStealthAsync(CancellationToken.None);
+    }
+
+    public static async Task<(bool ok, string? error)> StopStealthAsync(CancellationToken cancellationToken)
+    {
+        var stopResult = await HiddenProcessService.StopVpnProcessesAsync(cancellationToken);
         SystemProxyService.DisableSystemProxy();
+        return stopResult;
     }
 
     public static async Task StopAwgAsync()
     {
-        if (AwgTunnelService.NeedsDisconnect())
-            await AwgTunnelService.DisconnectAsync();
+        _ = await StopAwgAsync(CancellationToken.None);
+    }
+
+    public static async Task<(bool ok, string? error)> StopAwgAsync(CancellationToken cancellationToken)
+    {
+        if (!AwgTunnelService.NeedsDisconnect())
+            return (true, null);
+        return await AwgTunnelService.DisconnectAsync(cancellationToken);
     }
 
     /// <summary>
@@ -24,17 +36,37 @@ public static class VpnModeSwitch
     {
         SystemProxyService.DisableSystemProxy();
         cancellationToken.ThrowIfCancellationRequested();
-        await HiddenProcessService.StopVpnProcessesAsync(cancellationToken);
+        var stealthStop = await HiddenProcessService.StopVpnProcessesAsync(cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
+        var awgStop = (ok: true, error: (string?)null);
         if (AwgTunnelService.NeedsDisconnect())
-            await AwgTunnelService.DisconnectAsync(cancellationToken);
-        VpnSessionService.Reset();
+            awgStop = await AwgTunnelService.DisconnectAsync(cancellationToken);
+
+        if (stealthStop.ok && awgStop.ok)
+            VpnSessionService.Reset();
     }
 
     public static async Task StopAllAsync()
     {
-        await StopAwgAsync();
-        await StopStealthAsync();
+        _ = await StopAllAsync(CancellationToken.None);
+    }
+
+    public static async Task<(bool ok, string? error)> StopAllAsync(CancellationToken cancellationToken)
+    {
+        string? error = null;
+        var awgStop = await StopAwgAsync(cancellationToken);
+        if (!awgStop.ok)
+            error ??= awgStop.error;
+
+        cancellationToken.ThrowIfCancellationRequested();
+        var stealthStop = await StopStealthAsync(cancellationToken);
+        if (!stealthStop.ok)
+            error ??= stealthStop.error;
+
+        if (!string.IsNullOrWhiteSpace(error))
+            return (false, error);
+
         VpnSessionService.Reset();
+        return (true, null);
     }
 }

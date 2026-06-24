@@ -5,6 +5,7 @@ namespace VpnSc.Services;
 public static class HiddenProcessService
 {
     private static readonly TimeSpan TaskKillTimeout = TimeSpan.FromSeconds(30);
+    private const int TaskKillProcessNotFoundExitCode = 128;
 
     public static bool StartHiddenProcess(string executable, params string[] arguments)
     {
@@ -25,16 +26,16 @@ public static class HiddenProcessService
         catch { return false; }
     }
 
-    public static Task StopVpnProcessesAsync() =>
+    public static Task<(bool ok, string? error)> StopVpnProcessesAsync() =>
         StopVpnProcessesAsync(CancellationToken.None);
 
-    public static async Task StopVpnProcessesAsync(CancellationToken cancellationToken)
+    public static async Task<(bool ok, string? error)> StopVpnProcessesAsync(CancellationToken cancellationToken)
     {
         SystemProxyService.DisableSystemProxy();
-        await ForceKillXrayAsync(cancellationToken);
+        return await ForceKillXrayAsync(cancellationToken);
     }
 
-    private static async Task ForceKillXrayAsync(CancellationToken cancellationToken)
+    private static async Task<(bool ok, string? error)> ForceKillXrayAsync(CancellationToken cancellationToken)
     {
         try
         {
@@ -45,11 +46,13 @@ public static class HiddenProcessService
                 Arguments = "/f /im xray.exe",
                 UseShellExecute = false,
                 CreateNoWindow = true,
-                WindowStyle = ProcessWindowStyle.Hidden
+                WindowStyle = ProcessWindowStyle.Hidden,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
             };
             using var p = Process.Start(psi);
             if (p == null)
-                return;
+                return (false, "Failed to start taskkill.");
 
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             cts.CancelAfter(TaskKillTimeout);
@@ -62,13 +65,28 @@ public static class HiddenProcessService
                 ProcessCompat.Kill(p);
                 if (cancellationToken.IsCancellationRequested)
                     throw;
+                return (false, "Timed out waiting for xray stop.");
             }
+
+            var stdout = (await p.StandardOutput.ReadToEndAsync()).Trim();
+            var stderr = (await p.StandardError.ReadToEndAsync()).Trim();
+            if (p.ExitCode == 0 || p.ExitCode == TaskKillProcessNotFoundExitCode)
+                return (true, null);
+
+            if (!string.IsNullOrWhiteSpace(stderr))
+                return (false, stderr);
+            if (!string.IsNullOrWhiteSpace(stdout))
+                return (false, stdout);
+            return (false, "taskkill failed (exit " + p.ExitCode + ").");
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            throw;
+            return (false, "Operation canceled");
         }
-        catch { }
+        catch (Exception ex)
+        {
+            return (false, ex.Message);
+        }
     }
 
     public static async Task<bool> CheckVpnProcessesAsync(string xrayPath)

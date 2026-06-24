@@ -39,7 +39,9 @@ public static class VpnOrchestrator
         string serverName,
         bool abortOnAutotuneFail = false)
     {
-        await VpnModeSwitch.StopAllAsync();
+        var stopAll = await VpnModeSwitch.StopAllAsync(CancellationToken.None);
+        if (!stopAll.ok)
+            return (false, LocalizeStopError(stopAll.error ?? I18n.T("connection_error")));
 
         var result = await VpnService.StartVpnAsync(uuid, serverName, abortOnAutotuneFail);
         if (result.Success)
@@ -56,7 +58,9 @@ public static class VpnOrchestrator
         string? wgServerId,
         string? displayServerName = null)
     {
-        await VpnModeSwitch.StopAllAsync();
+        var stopAll = await VpnModeSwitch.StopAllAsync(CancellationToken.None);
+        if (!stopAll.ok)
+            return (false, LocalizeStopError(stopAll.error ?? I18n.T("connection_error")));
 
         if (!OsHelper.IsWindows10OrGreater())
             return (false, I18n.T("wireguard_win10_required"));
@@ -98,7 +102,9 @@ public static class VpnOrchestrator
             if (picked == null)
                 return (false, stealthError ?? I18n.T("wg_unavailable"));
 
-            await VpnModeSwitch.StopStealthAsync();
+            var stopStealth = await VpnModeSwitch.StopStealthAsync(CancellationToken.None);
+            if (!stopStealth.ok)
+                return (false, LocalizeStopError(stopStealth.error ?? stealthError ?? I18n.T("connection_error")));
             var awg = await AwgVpnService.StartVpnAsync(accessToken, picked.Id);
             if (!awg.ok)
                 return (false, awg.error ?? stealthError ?? I18n.T("auto_fallback_failed"));

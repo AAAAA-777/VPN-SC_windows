@@ -152,7 +152,9 @@ public static class VpnService
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-            await HiddenProcessService.StopVpnProcessesAsync(cancellationToken);
+            var stopResult = await HiddenProcessService.StopVpnProcessesAsync(cancellationToken);
+            if (!stopResult.ok)
+                return stopResult;
             SystemProxyService.DisableSystemProxy();
             return (true, null);
         }
