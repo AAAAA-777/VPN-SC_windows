@@ -116,20 +116,40 @@ public static class VpnOrchestrator
         }
     }
 
-    public static Task StopAsync() => StopAsync(CancellationToken.None);
+    public static Task<(bool ok, string? error)> StopAsync() => StopAsync(CancellationToken.None);
 
-    public static async Task StopAsync(CancellationToken cancellationToken)
+    public static async Task<(bool ok, string? error)> StopAsync(CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        if (AwgTunnelService.NeedsDisconnect())
+        string? error = null;
+        try
         {
             cancellationToken.ThrowIfCancellationRequested();
-            await AwgVpnService.StopVpnAsync(cancellationToken);
+            if (AwgTunnelService.NeedsDisconnect())
+            {
+                var awgStop = await AwgVpnService.StopVpnAsync(cancellationToken);
+                if (!awgStop.ok)
+                    error ??= awgStop.error;
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            var stealthStop = await VpnService.StopVpnAsync(cancellationToken);
+            if (!stealthStop.ok)
+                error ??= stealthStop.error;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            error ??= "Operation canceled";
+        }
+        catch (Exception ex)
+        {
+            error ??= ex.Message;
         }
 
-        cancellationToken.ThrowIfCancellationRequested();
-        await VpnService.StopVpnAsync(cancellationToken);
+        if (!string.IsNullOrWhiteSpace(error))
+            return (false, LocalizeStopError(error));
+
         VpnSessionService.Reset();
+        return (true, null);
     }
 
     public static async Task<(bool ok, bool connected, JsonObject? stats)> GetStatusAsync(string uuid)
@@ -158,6 +178,23 @@ public static class VpnOrchestrator
             "select_server" => I18n.T("select_server"),
             "wg_unavailable" => I18n.T("wg_unavailable"),
             "auto_fallback_failed" => I18n.T("auto_fallback_failed"),
+            _ => error
+        };
+    }
+
+    private static string LocalizeStopError(string error)
+    {
+        if (string.IsNullOrWhiteSpace(error))
+            return I18n.T("connection_error");
+
+        return error switch
+        {
+            "Operation canceled" => I18n.T("connection_error"),
+            "Timed out waiting for elevated tunnel install" => I18n.T("awg_tunnel_timeout"),
+            "Timed out waiting for elevated tunnel stop" => I18n.T("awg_tunnel_timeout"),
+            "awg_tunnel_service.exe not found next to vpn-sc.exe" => I18n.T("awg_helper_missing"),
+            _ when error.StartsWith("awg_tunnel_service.exe failed", StringComparison.OrdinalIgnoreCase)
+                => I18n.T("awg_helper_failed", ("detail", error)),
             _ => error
         };
     }

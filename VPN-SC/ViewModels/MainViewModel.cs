@@ -497,7 +497,13 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private async Task LogoutAsync()
     {
-        await VpnOrchestrator.StopAsync();
+        var stopResult = await VpnOrchestrator.StopAsync();
+        if (!stopResult.ok && SyncVpnStateFromRuntime())
+        {
+            ShowStopError(stopResult.error);
+            return;
+        }
+
         _statsTimer.Stop();
         _durationTimer.Stop();
         await StorageService.ClearAllWithLogoutAsync();
@@ -601,7 +607,13 @@ public partial class MainViewModel : ObservableObject
         if (!VpnConnected && !VpnOrchestrator.IsConnected && !IsConnecting)
             return;
         var disconnectedServer = _connectedServerRaw;
-        await VpnOrchestrator.StopAsync();
+        var stopResult = await VpnOrchestrator.StopAsync();
+        if (!stopResult.ok && SyncVpnStateFromRuntime())
+        {
+            ShowStopError(stopResult.error);
+            return;
+        }
+
         _statsTimer.Stop();
         _durationTimer.Stop();
         _connectionStartTime = null;
@@ -786,11 +798,7 @@ public partial class MainViewModel : ObservableObject
         using var cts = new CancellationTokenSource(ShutdownStopTimeout);
         try
         {
-            await VpnOrchestrator.StopAsync(cts.Token);
-        }
-        catch (OperationCanceledException)
-        {
-            /* ignore timeout during app close */
+            _ = await VpnOrchestrator.StopAsync(cts.Token);
         }
         catch
         {
@@ -1337,7 +1345,13 @@ public partial class MainViewModel : ObservableObject
         if (!VpnConnected)
             return;
 
-        await VpnOrchestrator.StopAsync();
+        var stopResult = await VpnOrchestrator.StopAsync();
+        if (!stopResult.ok && SyncVpnStateFromRuntime())
+        {
+            ShowStopError(stopResult.error);
+            return;
+        }
+
         _statsTimer.Stop();
         _durationTimer.Stop();
         _connectionStartTime = null;
@@ -1356,6 +1370,24 @@ public partial class MainViewModel : ObservableObject
         ConnectionStatusText = IsConnecting
             ? I18n.T("connecting")
             : VpnConnected ? I18n.T("connected") : I18n.T("disconnected");
+
+    private bool SyncVpnStateFromRuntime()
+    {
+        var connected = VpnOrchestrator.IsConnected;
+        VpnConnected = connected;
+        ShowConnectionDetails = connected;
+        UpdateConnectionStatusText();
+        return connected;
+    }
+
+    private static void ShowStopError(string? error)
+    {
+        MessageBox.Show(
+            string.IsNullOrWhiteSpace(error) ? I18n.T("connection_error") : error,
+            I18n.T("app_name"),
+            MessageBoxButton.OK,
+            MessageBoxImage.Warning);
+    }
 
     private void UpdateServerDisplay()
     {

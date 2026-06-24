@@ -143,33 +143,41 @@ public static class AwgTunnelService
         try
         {
             var helper = GetHelperPath();
-            if (File.Exists(helper))
-            {
-                var statusPath = StatusFilePath();
-                var args = "stop " + TunnelName + " \"" + statusPath + "\"";
-                DeleteIfExists(statusPath);
-                if (IsAdmin())
-                    await StartHelperProcessAsync(
-                        helper,
-                        args,
-                        statusPath,
-                        HelperDisconnectTimeout,
-                        ElevatedStopTimeoutError,
-                        cancellationToken);
-                else
-                    await RunHelperElevatedAsync(
-                        args,
-                        statusPath,
-                        HelperDisconnectTimeout,
-                        ElevatedStopTimeoutError,
-                        cancellationToken);
-            }
+            if (!File.Exists(helper))
+                return (false, "awg_tunnel_service.exe not found next to vpn-sc.exe");
 
-            return (true, null);
+            var statusPath = StatusFilePath();
+            var args = "stop " + TunnelName + " \"" + statusPath + "\"";
+            DeleteIfExists(statusPath);
+            var result = IsAdmin()
+                ? await StartHelperProcessAsync(
+                    helper,
+                    args,
+                    statusPath,
+                    HelperDisconnectTimeout,
+                    ElevatedStopTimeoutError,
+                    cancellationToken)
+                : await RunHelperElevatedAsync(
+                    args,
+                    statusPath,
+                    HelperDisconnectTimeout,
+                    ElevatedStopTimeoutError,
+                    cancellationToken);
+
+            return result;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return (false, "Operation canceled");
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message);
         }
         finally
         {
-            IsConnected = false;
+            // Keep state aligned with actual service presence after stop attempt.
+            IsConnected = IsTunnelServiceRunning();
             _configPath = null;
         }
     }
