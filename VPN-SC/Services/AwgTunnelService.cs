@@ -140,31 +140,38 @@ public static class AwgTunnelService
             return (true, null);
         }
 
-        var helper = GetHelperPath();
-        if (File.Exists(helper))
+        try
         {
-            var statusPath = StatusFilePath();
-            var args = "stop " + TunnelName + " \"" + statusPath + "\"";
-            DeleteIfExists(statusPath);
-            if (IsAdmin())
-                await StartHelperProcessAsync(
-                    helper,
-                    args,
-                    statusPath,
-                    HelperDisconnectTimeout,
-                    ElevatedStopTimeoutError,
-                    cancellationToken);
-            else
-                await RunHelperElevatedAsync(
-                    args,
-                    statusPath,
-                    HelperDisconnectTimeout,
-                    ElevatedStopTimeoutError,
-                    cancellationToken);
+            var helper = GetHelperPath();
+            if (File.Exists(helper))
+            {
+                var statusPath = StatusFilePath();
+                var args = "stop " + TunnelName + " \"" + statusPath + "\"";
+                DeleteIfExists(statusPath);
+                if (IsAdmin())
+                    await StartHelperProcessAsync(
+                        helper,
+                        args,
+                        statusPath,
+                        HelperDisconnectTimeout,
+                        ElevatedStopTimeoutError,
+                        cancellationToken);
+                else
+                    await RunHelperElevatedAsync(
+                        args,
+                        statusPath,
+                        HelperDisconnectTimeout,
+                        ElevatedStopTimeoutError,
+                        cancellationToken);
+            }
+
+            return (true, null);
         }
-        IsConnected = false;
-        _configPath = null;
-        return (true, null);
+        finally
+        {
+            IsConnected = false;
+            _configPath = null;
+        }
     }
 
     private static bool WriteConfigFile(string confIni, string tunnelName, out string path, out string? error)
