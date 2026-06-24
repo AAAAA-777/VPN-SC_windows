@@ -273,8 +273,13 @@ public static class AutoUpdateService
             if (process == null)
                 return false;
 
-            var exited = await Task.Run(() => process.WaitForExit(620000));
-            if (!exited)
+            var stderrTask = process.StandardError.ReadToEndAsync();
+            using var waitCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(620000));
+            try
+            {
+                await ProcessCompat.WaitForExitAsync(process, waitCts.Token);
+            }
+            catch (OperationCanceledException)
             {
                 try
                 {
@@ -285,10 +290,12 @@ public static class AutoUpdateService
                 {
                     /* ignore */
                 }
+                _ = await stderrTask;
                 await TryDeleteFileAsync(partPath);
                 return false;
             }
 
+            _ = await stderrTask;
             if (process.ExitCode != 0)
             {
                 await TryDeleteFileAsync(partPath);

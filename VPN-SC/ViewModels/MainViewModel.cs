@@ -549,6 +549,7 @@ public partial class MainViewModel : ObservableObject
 
         IsConnecting = true;
         var connected = false;
+        var keepRuntimeConnectionState = false;
         try
         {
             if (!FileManagerService.CheckRequiredFiles())
@@ -568,6 +569,7 @@ public partial class MainViewModel : ObservableObject
                 var stopAllResult = await VpnModeSwitch.StopAllAsync(CancellationToken.None);
                 if (!stopAllResult.ok && SyncVpnStateFromRuntime())
                 {
+                    keepRuntimeConnectionState = true;
                     ShowStopError(stopAllResult.error);
                     return;
                 }
@@ -593,6 +595,7 @@ public partial class MainViewModel : ObservableObject
             var stopAllResult = await VpnModeSwitch.StopAllAsync(CancellationToken.None);
             if (!stopAllResult.ok && SyncVpnStateFromRuntime())
             {
+                keepRuntimeConnectionState = true;
                 ShowStopError(stopAllResult.error);
                 return;
             }
@@ -602,7 +605,7 @@ public partial class MainViewModel : ObservableObject
         finally
         {
             IsConnecting = false;
-            if (!connected)
+            if (!connected && !keepRuntimeConnectionState)
             {
                 VpnConnected = false;
                 ShowConnectionDetails = false;
