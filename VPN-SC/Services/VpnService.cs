@@ -10,6 +10,7 @@ namespace VpnSc.Services;
 public static class VpnService
 {
     public const int MaxServerFallbackAttempts = 5;
+    private const string CleanupFailedReason = "cleanup_failed";
 
     private static readonly HttpClient Http = CreateHttp();
 
@@ -98,14 +99,24 @@ public static class VpnService
                 }
 
                 lastError = result.Error;
-                await CleanupFailedConnectionAsync();
+                if (result.Reason == CleanupFailedReason)
+                    return result;
+
+                var cleanupResult = await CleanupFailedConnectionAsync();
+                if (!cleanupResult.ok)
+                {
+                    return Fail(
+                        cleanupResult.error ?? "Не удалось остановить процессы VPN после неудачного подключения.",
+                        CleanupFailedReason);
+                }
+
                 return result;
             }
 
             var primary = await TryServerAsync(selected);
             if (primary.Success)
                 return primary;
-            if (primary.Reason == VpnAutoTunerService.AutotuneFailedReason)
+            if (primary.Reason == VpnAutoTunerService.AutotuneFailedReason || primary.Reason == CleanupFailedReason)
                 return primary;
 
             var fallbackLimit = Math.Min(MaxServerFallbackAttempts, servers.Count);
@@ -117,7 +128,7 @@ public static class VpnService
                 var result = await TryServerAsync(server);
                 if (result.Success)
                     return result;
-                if (result.Reason == VpnAutoTunerService.AutotuneFailedReason)
+                if (result.Reason == VpnAutoTunerService.AutotuneFailedReason || result.Reason == CleanupFailedReason)
                     return result;
             }
 
@@ -125,7 +136,9 @@ public static class VpnService
         }
         catch (Exception ex)
         {
-            await CleanupFailedConnectionAsync();
+            var cleanupResult = await CleanupFailedConnectionAsync();
+            if (!cleanupResult.ok)
+                return Fail(cleanupResult.error ?? ex.Message, CleanupFailedReason);
             return Fail(ex.Message);
         }
     }
@@ -281,7 +294,13 @@ public static class VpnService
             await Task.Delay(500);
             if (!await VpnTunnelProbe.MeasureThroughSocksAsync())
             {
-                await CleanupFailedConnectionAsync();
+                var cleanupResult = await CleanupFailedConnectionAsync();
+                if (!cleanupResult.ok)
+                {
+                    return Fail(
+                        cleanupResult.error ?? "Не удалось остановить процессы VPN после неудачного подключения.",
+                        CleanupFailedReason);
+                }
                 return Fail("Туннель не пропускает трафик. Проверьте подключение или выберите другой сервер.");
             }
 
@@ -296,16 +315,18 @@ public static class VpnService
         }
     }
 
-    private static async Task CleanupFailedConnectionAsync()
+    private static async Task<(bool ok, string? error)> CleanupFailedConnectionAsync()
     {
-        await HiddenProcessService.StopVpnProcessesAsync();
+        var stopResult = await HiddenProcessService.StopVpnProcessesAsync();
         SystemProxyService.DisableSystemProxy();
+        return stopResult;
     }
 
-    private static StartVpnResult Fail(string? error) => new()
+    private static StartVpnResult Fail(string? error, string? reason = null) => new()
     {
         Success = false,
-        Error = error
+        Error = error,
+        Reason = reason
     };
 
     private static async Task<string> FetchConnectFeedAsync(string uuid)
