@@ -319,6 +319,8 @@ public partial class MainViewModel : ObservableObject
     public async Task BootstrapAsync()
     {
         CurrentPage = AppPage.Loading;
+        NoInternetTitle = I18n.T("no_internet_title");
+        NoInternetMessage = I18n.T("no_internet_message");
         _ = AnalyticsService.SendAnalyticsAsync();
         try
         {
@@ -348,15 +350,12 @@ public partial class MainViewModel : ObservableObject
 
                 if (!FileManagerService.CheckRequiredFiles())
                 {
-                    var details = string.IsNullOrWhiteSpace(filesRepairMessage)
-                        ? string.Empty
-                        : $"\n\n{filesRepairMessage}";
-                    MessageBox.Show(
-                        I18n.T("vpn_files_missing") + details,
-                        I18n.T("app_name"),
-                        MessageBoxButton.OK,
-                        MessageBoxImage.Warning
-                    );
+                    NoInternetTitle = I18n.T("vpn_files_error_title");
+                    NoInternetMessage = string.IsNullOrWhiteSpace(filesRepairMessage)
+                        ? I18n.T("vpn_files_error_message")
+                        : I18n.T("vpn_files_error_message_detail", ("detail", filesRepairMessage));
+                    CurrentPage = AppPage.NoInternet;
+                    return;
                 }
             }
 
