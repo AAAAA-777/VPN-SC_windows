@@ -25,16 +25,20 @@ public static class HiddenProcessService
         catch { return false; }
     }
 
-    public static async Task StopVpnProcessesAsync()
+    public static Task StopVpnProcessesAsync() =>
+        StopVpnProcessesAsync(CancellationToken.None);
+
+    public static async Task StopVpnProcessesAsync(CancellationToken cancellationToken)
     {
         SystemProxyService.DisableSystemProxy();
-        await ForceKillXrayAsync();
+        await ForceKillXrayAsync(cancellationToken);
     }
 
-    private static async Task ForceKillXrayAsync()
+    private static async Task ForceKillXrayAsync(CancellationToken cancellationToken)
     {
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var psi = new ProcessStartInfo
             {
                 FileName = "taskkill",
@@ -47,7 +51,8 @@ public static class HiddenProcessService
             if (p == null)
                 return;
 
-            using var cts = new CancellationTokenSource(TaskKillTimeout);
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            cts.CancelAfter(TaskKillTimeout);
             try
             {
                 await ProcessCompat.WaitForExitAsync(p, cts.Token);
@@ -55,7 +60,13 @@ public static class HiddenProcessService
             catch (OperationCanceledException)
             {
                 ProcessCompat.Kill(p);
+                if (cancellationToken.IsCancellationRequested)
+                    throw;
             }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch { }
     }

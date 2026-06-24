@@ -116,12 +116,19 @@ public static class VpnOrchestrator
         }
     }
 
-    public static async Task StopAsync()
-    {
-        if (AwgTunnelService.NeedsDisconnect())
-            await AwgVpnService.StopVpnAsync();
+    public static Task StopAsync() => StopAsync(CancellationToken.None);
 
-        await VpnService.StopVpnAsync();
+    public static async Task StopAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (AwgTunnelService.NeedsDisconnect())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await AwgVpnService.StopVpnAsync(cancellationToken);
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        await VpnService.StopVpnAsync(cancellationToken);
         VpnSessionService.Reset();
     }
 

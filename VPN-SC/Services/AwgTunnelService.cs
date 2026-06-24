@@ -11,7 +11,11 @@ public static class AwgTunnelService
 {
     private const string TunnelName = "vpnsc_awg";
     private const string TunnelServicePrefix = "AmneziaWGTunnel$";
-    private static readonly TimeSpan HelperProcessTimeout = TimeSpan.FromMinutes(2);
+    private const string ElevatedInstallTimeoutError = "Timed out waiting for elevated tunnel install";
+    private const string ElevatedStopTimeoutError = "Timed out waiting for elevated tunnel stop";
+    private static readonly TimeSpan HelperConnectTimeout = TimeSpan.FromMinutes(2);
+    private static readonly TimeSpan HelperDisconnectTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan ElevatedStatusPollInterval = TimeSpan.FromMilliseconds(300);
     private static string? _configPath;
 
     public static bool IsConnected { get; private set; }
@@ -42,9 +46,20 @@ public static class AwgTunnelService
         var args = "run \"" + configPath + "\" " + TunnelName + " \"" + statusPath + "\"";
         (bool ok, string? err) result;
         if (!IsAdmin())
-            result = RunHelperElevated(args, statusPath);
+            result = await RunHelperElevatedAsync(
+                args,
+                statusPath,
+                HelperConnectTimeout,
+                ElevatedInstallTimeoutError,
+                CancellationToken.None);
         else
-            result = await StartHelperProcessAsync(helper, args, statusPath);
+            result = await StartHelperProcessAsync(
+                helper,
+                args,
+                statusPath,
+                HelperConnectTimeout,
+                ElevatedInstallTimeoutError,
+                CancellationToken.None);
 
         if (!result.ok)
         {
@@ -116,7 +131,7 @@ public static class AwgTunnelService
 
     public static bool NeedsDisconnect() => IsConnected || IsTunnelServiceRunning();
 
-    public static async Task<(bool ok, string? error)> DisconnectAsync()
+    public static async Task<(bool ok, string? error)> DisconnectAsync(CancellationToken cancellationToken = default)
     {
         if (!NeedsDisconnect())
         {
@@ -132,9 +147,20 @@ public static class AwgTunnelService
             var args = "stop " + TunnelName + " \"" + statusPath + "\"";
             DeleteIfExists(statusPath);
             if (IsAdmin())
-                await StartHelperProcessAsync(helper, args, statusPath);
+                await StartHelperProcessAsync(
+                    helper,
+                    args,
+                    statusPath,
+                    HelperDisconnectTimeout,
+                    ElevatedStopTimeoutError,
+                    cancellationToken);
             else
-                RunHelperElevated(args, statusPath);
+                await RunHelperElevatedAsync(
+                    args,
+                    statusPath,
+                    HelperDisconnectTimeout,
+                    ElevatedStopTimeoutError,
+                    cancellationToken);
         }
         IsConnected = false;
         _configPath = null;
@@ -187,7 +213,12 @@ public static class AwgTunnelService
         catch { return false; }
     }
 
-    private static (bool ok, string? error) RunHelperElevated(string arguments, string statusPath)
+    private static async Task<(bool ok, string? error)> RunHelperElevatedAsync(
+        string arguments,
+        string statusPath,
+        TimeSpan timeout,
+        string timeoutError,
+        CancellationToken cancellationToken)
     {
         DeleteIfExists(statusPath);
         var helper = GetHelperPath();
@@ -196,17 +227,30 @@ public static class AwgTunnelService
         if (result <= 32)
             return (false, "Administrator privileges required (UAC declined)");
 
-        var deadline = DateTime.UtcNow.AddSeconds(90);
+        var deadline = DateTime.UtcNow.Add(timeout);
         while (DateTime.UtcNow < deadline)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             if (File.Exists(statusPath))
                 return ReadStatusFile(statusPath);
-            Thread.Sleep(300);
+
+            var remaining = deadline - DateTime.UtcNow;
+            if (remaining <= TimeSpan.Zero)
+                break;
+
+            var delay = remaining < ElevatedStatusPollInterval ? remaining : ElevatedStatusPollInterval;
+            await Task.Delay(delay, cancellationToken);
         }
-        return (false, "Timed out waiting for elevated tunnel install");
+        return (false, timeoutError);
     }
 
-    private static async Task<(bool ok, string? error)> StartHelperProcessAsync(string helper, string arguments, string statusPath)
+    private static async Task<(bool ok, string? error)> StartHelperProcessAsync(
+        string helper,
+        string arguments,
+        string statusPath,
+        TimeSpan timeout,
+        string timeoutError,
+        CancellationToken cancellationToken)
     {
         DeleteIfExists(statusPath);
         var workDir = AppDomain.CurrentDomain.BaseDirectory;
@@ -222,7 +266,8 @@ public static class AwgTunnelService
         if (proc == null)
             return (false, "CreateProcess failed");
 
-        using var cts = new CancellationTokenSource(HelperProcessTimeout);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cts.CancelAfter(timeout);
         try
         {
             await ProcessCompat.WaitForExitAsync(proc, cts.Token);
@@ -232,7 +277,9 @@ public static class AwgTunnelService
             ProcessCompat.Kill(proc);
             if (File.Exists(statusPath))
                 return ReadStatusFile(statusPath);
-            return (false, "Timed out waiting for elevated tunnel install");
+            if (cancellationToken.IsCancellationRequested)
+                throw;
+            return (false, timeoutError);
         }
 
         if (proc.ExitCode != 0)

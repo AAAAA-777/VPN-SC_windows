@@ -85,8 +85,11 @@ public static class AwgVpnService
         }
     }
 
-    public static async Task<(bool ok, string? error)> StopVpnAsync() =>
-        await AwgTunnelService.DisconnectAsync();
+    public static Task<(bool ok, string? error)> StopVpnAsync() =>
+        StopVpnAsync(CancellationToken.None);
+
+    public static async Task<(bool ok, string? error)> StopVpnAsync(CancellationToken cancellationToken) =>
+        await AwgTunnelService.DisconnectAsync(cancellationToken);
 
     public static (bool ok, bool connected) GetVpnStatus() =>
         (true, IsTunnelUp());

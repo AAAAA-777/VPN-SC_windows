@@ -144,13 +144,21 @@ public static class VpnService
         }
     }
 
-    public static async Task<(bool ok, string? error)> StopVpnAsync()
+    public static Task<(bool ok, string? error)> StopVpnAsync() =>
+        StopVpnAsync(CancellationToken.None);
+
+    public static async Task<(bool ok, string? error)> StopVpnAsync(CancellationToken cancellationToken)
     {
         try
         {
-            await HiddenProcessService.StopVpnProcessesAsync();
+            cancellationToken.ThrowIfCancellationRequested();
+            await HiddenProcessService.StopVpnProcessesAsync(cancellationToken);
             SystemProxyService.DisableSystemProxy();
             return (true, null);
+        }
+        catch (OperationCanceledException)
+        {
+            return (false, "Operation canceled");
         }
         catch (Exception ex)
         {

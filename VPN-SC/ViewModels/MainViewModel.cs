@@ -21,6 +21,7 @@ public partial class MainViewModel : ObservableObject
     private int _tunnelHealthFailures;
     private int _statsRefreshInProgress;
     private static readonly TimeSpan AwgHealthProbeTimeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan ShutdownStopTimeout = TimeSpan.FromSeconds(30);
 
     private readonly DispatcherTimer _statsTimer = new() { Interval = TimeSpan.FromSeconds(2) };
     private readonly DispatcherTimer _durationTimer = new() { Interval = TimeSpan.FromSeconds(1) };
@@ -782,7 +783,19 @@ public partial class MainViewModel : ObservableObject
 
     public async Task OnClosingAsync()
     {
-        try { await VpnOrchestrator.StopAsync(); } catch { /* ignore */ }
+        using var cts = new CancellationTokenSource(ShutdownStopTimeout);
+        try
+        {
+            await VpnOrchestrator.StopAsync(cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            /* ignore timeout during app close */
+        }
+        catch
+        {
+            /* ignore */
+        }
     }
 
     private async Task EnterMainFlowAsync()
