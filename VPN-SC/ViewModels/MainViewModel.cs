@@ -20,6 +20,7 @@ public partial class MainViewModel : ObservableObject
     private string? _connectedServerRaw;
     private int _tunnelHealthFailures;
     private int _statsRefreshInProgress;
+    private static readonly TimeSpan AwgHealthProbeTimeout = TimeSpan.FromSeconds(10);
 
     private readonly DispatcherTimer _statsTimer = new() { Interval = TimeSpan.FromSeconds(2) };
     private readonly DispatcherTimer _durationTimer = new() { Interval = TimeSpan.FromSeconds(1) };
@@ -1295,7 +1296,7 @@ public partial class MainViewModel : ObservableObject
                     (protocol == VpnProtocol.Auto && VpnSessionService.ActiveStack == VpnActiveStack.Awg);
 
         var tunnelOk = isAwg
-            ? await VpnTunnelProbe.TestInternetAsync()
+            ? await CheckAwgTunnelHealthAsync()
             : await VpnTunnelProbe.MeasureThroughSocksAsync();
 
         if (tunnelOk)
@@ -1310,6 +1311,12 @@ public partial class MainViewModel : ObservableObject
 
         _tunnelHealthFailures = 0;
         await OnTunnelLostAsync();
+    }
+
+    private static async Task<bool> CheckAwgTunnelHealthAsync()
+    {
+        using var cts = new CancellationTokenSource(AwgHealthProbeTimeout);
+        return await VpnTunnelProbe.TestInternetAsync(cts.Token);
     }
 
     private async Task OnTunnelLostAsync()
