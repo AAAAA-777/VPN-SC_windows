@@ -11,6 +11,7 @@ public static class AwgTunnelService
 {
     private const string TunnelName = "vpnsc_awg";
     private const string TunnelServicePrefix = "AmneziaWGTunnel$";
+    private static readonly TimeSpan HelperProcessTimeout = TimeSpan.FromMinutes(2);
     private static string? _configPath;
 
     public static bool IsConnected { get; private set; }
@@ -221,7 +222,19 @@ public static class AwgTunnelService
         if (proc == null)
             return (false, "CreateProcess failed");
 
-        await Task.Run(() => proc.WaitForExit(120000));
+        using var cts = new CancellationTokenSource(HelperProcessTimeout);
+        try
+        {
+            await ProcessCompat.WaitForExitAsync(proc, cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            ProcessCompat.Kill(proc);
+            if (File.Exists(statusPath))
+                return ReadStatusFile(statusPath);
+            return (false, "Timed out waiting for elevated tunnel install");
+        }
+
         if (proc.ExitCode != 0)
         {
             if (File.Exists(statusPath))
