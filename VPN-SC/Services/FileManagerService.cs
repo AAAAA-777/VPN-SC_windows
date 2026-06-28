@@ -52,14 +52,65 @@ public static class FileManagerService
     public static string GetXrayZipDownloadUrl() =>
         $"https://github.com/XTLS/Xray-core/releases/download/{XrayReleaseTag}/{GetXrayZipAssetName()}";
 
+    /// <summary>CDN xray.exe — только Win10+ x64; Win7 и 32-bit качают с GitHub.</summary>
+    private static bool ShouldDownloadXrayFromGitHub() =>
+        OsHelper.IsWindows7() || !Environment.Is64BitOperatingSystem;
+
+    private static string XraySourceMarkerPath() =>
+        Path.Combine(GetConnectDirectory(), ".xray-source");
+
+    private static bool IsXrayFromGitHub()
+    {
+        try
+        {
+            var marker = XraySourceMarkerPath();
+            if (!File.Exists(marker))
+                return false;
+            return string.Equals(File.ReadAllText(marker).Trim(), "github", StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static void WriteXraySourceMarker(string source)
+    {
+        try
+        {
+            Directory.CreateDirectory(GetConnectDirectory());
+            File.WriteAllText(XraySourceMarkerPath(), source, System.Text.Encoding.UTF8);
+        }
+        catch
+        {
+            /* ignore */
+        }
+    }
+
+    private static void TryDeleteXraySourceMarker() => TryDeleteFile(XraySourceMarkerPath());
+
+    private static bool IsValidXrayForPlatform(string path)
+    {
+        if (!IsValidVpnFile("xray.exe", path))
+            return false;
+        if (ShouldDownloadXrayFromGitHub() && !IsXrayFromGitHub())
+            return false;
+        return true;
+    }
+
     public static bool CheckRequiredFiles()
     {
         foreach (var name in RequiredFiles.Keys)
         {
             var path = Path.Combine(GetConnectDirectory(), name);
-            if (!IsValidVpnFile(name, path))
+            var valid = string.Equals(name, "xray.exe", StringComparison.OrdinalIgnoreCase)
+                ? IsValidXrayForPlatform(path)
+                : IsValidVpnFile(name, path);
+            if (!valid)
             {
                 TryDeleteFile(path);
+                if (string.Equals(name, "xray.exe", StringComparison.OrdinalIgnoreCase))
+                    TryDeleteXraySourceMarker();
                 return false;
             }
         }
@@ -77,17 +128,45 @@ public static class FileManagerService
         {
             var dest = Path.Combine(GetConnectDirectory(), kv.Key);
             if (File.Exists(dest))
-                continue;
+            {
+                var valid = string.Equals(kv.Key, "xray.exe", StringComparison.OrdinalIgnoreCase)
+                    ? IsValidXrayForPlatform(dest)
+                    : IsValidVpnFile(kv.Key, dest);
+                if (valid)
+                    continue;
+                TryDeleteFile(dest);
+                if (string.Equals(kv.Key, "xray.exe", StringComparison.OrdinalIgnoreCase))
+                    TryDeleteXraySourceMarker();
+            }
 
             log?.Report($"Downloading {kv.Key}...");
+
+            if (string.Equals(kv.Key, "xray.exe", StringComparison.OrdinalIgnoreCase) &&
+                ShouldDownloadXrayFromGitHub())
+            {
+                if (await DownloadAndExtractXrayFromGitHubAsync(log))
+                {
+                    WriteXraySourceMarker("github");
+                    downloaded++;
+                    continue;
+                }
+
+                failed.Add(kv.Key);
+                continue;
+            }
+
             if (await DownloadFileAsync(kv.Value, dest, kv.Key, log))
             {
+                if (string.Equals(kv.Key, "xray.exe", StringComparison.OrdinalIgnoreCase))
+                    WriteXraySourceMarker("cdn");
                 downloaded++;
                 continue;
             }
 
             if (await TryDownloadFallbackAsync(kv.Key, dest, log))
             {
+                if (string.Equals(kv.Key, "xray.exe", StringComparison.OrdinalIgnoreCase))
+                    WriteXraySourceMarker("github");
                 downloaded++;
                 continue;
             }
