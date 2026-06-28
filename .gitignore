@@ -8,6 +8,8 @@ connect/
 agent-tools/
 *.wpftmp.csproj
 dist/
+vpn.zip
+vpn/
 native/x64/*.exe
 native/x64/*.dll
 VpnSc/
